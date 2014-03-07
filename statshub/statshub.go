@@ -33,28 +33,33 @@ type Response struct {
 }
 
 func init() {
-	http.HandleFunc("/", handler)
+	http.HandleFunc("/stats", statsHandler)
 }
 
-func handler(w http.ResponseWriter, r *http.Request) {
-	statusCode, err := doHandle(r)
-	w.Header().Set("Content-Type", "application/json")
-	response := Response{Succeeded: true}
-	if err != nil {
-		response.Succeeded = false
-		response.Error = fmt.Sprintf("%s", err)
-	}
-	w.WriteHeader(statusCode)
-	bytes, err := json.Marshal(&response)
-	if err == nil {
-		w.Write(bytes)
-	}
-	if err != nil {
-		log.Printf("Unable to respond to client: %s", err)
+// statsHandler handles requests to do stuff with stats
+func statsHandler(w http.ResponseWriter, r *http.Request) {
+	if "POST" == r.Method {
+		statusCode, err := postStats(r)
+		w.Header().Set("Content-Type", "application/json")
+		response := Response{Succeeded: true}
+		if err != nil {
+			response.Succeeded = false
+			response.Error = fmt.Sprintf("%s", err)
+		}
+		w.WriteHeader(statusCode)
+		bytes, err := json.Marshal(&response)
+		if err == nil {
+			w.Write(bytes)
+		}
+		if err != nil {
+			log.Printf("Unable to respond to client: %s", err)
+		}
+	} else {
+		w.WriteHeader(405)
 	}
 }
 
-func doHandle(r *http.Request) (statusCode int, err error) {
+func postStats(r *http.Request) (statusCode int, err error) {
 	context := appengine.NewContext(r)
 	user, err := user.CurrentOAuth(context, "")
 	if err != nil {
@@ -68,6 +73,23 @@ func doHandle(r *http.Request) (statusCode int, err error) {
 		return 400, fmt.Errorf("Unable to decode stats: %s", err)
 	}
 
+	if statusCode, err = checkHash(user, stats); err != nil {
+		return
+	}
+
+	conn, err := connectToRedis()
+	if err != nil {
+		return 500, fmt.Errorf("Unable to connect to redis: %s", err)
+	}
+
+	if err = postStatsToRedis(conn, stats); err != nil {
+		return 500, fmt.Errorf("Unable to post stats: %s", err)
+	}
+
+	return 200, nil
+}
+
+func checkHash(user *user.User, stats *Stats) (statusCode int, err error) {
 	hasher := sha256.New()
 	hasher.Reset()
 	hashInput := fmt.Sprintf("%s%d", user.Email, stats.UserId)
@@ -76,18 +98,9 @@ func doHandle(r *http.Request) (statusCode int, err error) {
 
 	if expectedHash != stats.Hash {
 		return 403, fmt.Errorf("Hash mismatch, authentication failure")
+	} else {
+		return
 	}
-
-	conn, err := connectToRedis()
-	if err != nil {
-		return 500, fmt.Errorf("Unable to connect to redis: %s", err)
-	}
-
-	if err = postStats(conn, stats); err != nil {
-		return 500, fmt.Errorf("Unable to post stats: %s", err)
-	}
-
-	return 200, nil
 }
 
 func connectToRedis() (conn redis.Conn, err error) {
@@ -104,7 +117,7 @@ func connectToRedis() (conn redis.Conn, err error) {
 	return
 }
 
-func postStats(conn redis.Conn, stats *Stats) (err error) {
+func postStatsToRedis(conn redis.Conn, stats *Stats) (err error) {
 	redisKeys := func(key string) []string {
 		return []string{
 			fmt.Sprintf("%d:%s", stats.UserId, key),
