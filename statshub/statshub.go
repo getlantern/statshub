@@ -10,14 +10,26 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"log"
 	"net/http"
+	"time"
+)
+
+var (
+	redisConnectTimeout = 10 * time.Second
+	redisReadTimeout    = 10 * time.Second
+	redisWriteTimeout   = 10 * time.Second
 )
 
 type Stats struct {
-	UserId      int64
+	UserId      uint64
 	Hash        string // sha256(real userid + userid)
 	CountryCode string
-	Counters    map[string]int64
-	Gauges      map[string]int64
+	Counters    map[string]uint64
+	Gauges      map[string]uint64
+}
+
+type Response struct {
+	Succeeded bool
+	Error     string
 }
 
 func init() {
@@ -25,48 +37,70 @@ func init() {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
+	statusCode, err := doHandle(r)
+	w.Header().Set("Content-Type", "application/json")
+	response := Response{Succeeded: true}
+	if err != nil {
+		response.Succeeded = false
+		response.Error = fmt.Sprintf("%s", err)
+	}
+	w.WriteHeader(statusCode)
+	bytes, err := json.Marshal(&response)
+	if err == nil {
+		w.Write(bytes)
+	}
+	if err != nil {
+		log.Printf("Unable to respond to client: %s", err)
+	}
+}
+
+func doHandle(r *http.Request) (statusCode int, err error) {
 	context := appengine.NewContext(r)
 	user, err := user.CurrentOAuth(context, "")
 	if err != nil {
-		fmt.Fprintln(w, "Unable to authenticate: %s", err)
-		return
+		return 401, fmt.Errorf("Unable to authenticate: %s", err)
 	}
 
 	decoder := json.NewDecoder(r.Body)
 	stats := &Stats{}
 	err = decoder.Decode(stats)
 	if err != nil {
-		fmt.Fprintln(w, "Unable to decode stats: %s", err)
-		return
+		return 400, fmt.Errorf("Unable to decode stats: %s", err)
 	}
 
 	hasher := sha256.New()
+	hasher.Reset()
 	hashInput := fmt.Sprintf("%s%d", user.Email, stats.UserId)
-	log.Printf("Hash input: %s", hashInput)
-	hasher.Write([]byte(user.Email))
-	hasher.Write([]byte(fmt.Sprintf("%d", stats.UserId)))
+	hasher.Write([]byte(hashInput))
 	expectedHash := hex.EncodeToString(hasher.Sum(nil))
-	log.Printf("Expected hash: %s", expectedHash)
-	log.Printf("Actual hash: %s", stats.Hash)
+
+	if expectedHash != stats.Hash {
+		return 403, fmt.Errorf("Hash mismatch, authentication failure")
+	}
 
 	conn, err := connectToRedis()
 	if err != nil {
-		fmt.Fprintln(w, "Unable to connect to redis: %s", err)
-		return
+		return 500, fmt.Errorf("Unable to connect to redis: %s", err)
 	}
 
 	if err = postStats(conn, stats); err != nil {
-		fmt.Fprintln(w, "Unable to post stats: %s", err)
-	} else {
-		fmt.Fprintln(w, "Posted stats!")
+		return 500, fmt.Errorf("Unable to post stats: %s", err)
 	}
+
+	return 200, nil
 }
 
 func connectToRedis() (conn redis.Conn, err error) {
-	if conn, err = redis.Dial("tcp", "pub-redis-10905.us-central1-1-1.gce.garantiadata.com:10905"); err != nil {
+	conn, err = redis.DialTimeout("tcp",
+		redisAddr,
+		redisConnectTimeout,
+		redisReadTimeout,
+		redisWriteTimeout,
+	)
+	if err != nil {
 		return
 	}
-	_, err = conn.Do("AUTH")
+	_, err = conn.Do("AUTH", redisPassword)
 	return
 }
 
