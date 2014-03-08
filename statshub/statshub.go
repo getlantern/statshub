@@ -23,16 +23,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
-)
-
-const (
-	redisConnectTimeout = 10 * time.Second
-	redisReadTimeout    = 10 * time.Second
-	redisWriteTimeout   = 10 * time.Second
-
-	presencePeriod     = 5 * time.Minute
-	maxPresencePeriods = 10
 )
 
 // UserInfo captures the UserId and authentication Hash for a request.

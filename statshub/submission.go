@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+const (
+	presencePeriod     = 5 * time.Minute
+	maxPresencePeriods = 10
+)
+
 // StatsSubmission posts stats from within a specific country.  Stats
 // include Counters (cumulative), Gauges (point in time) and Presence
 // (online/offline).
