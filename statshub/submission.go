@@ -31,9 +31,10 @@ func (stats *StatsSubmission) postToRedis(conn redis.Conn, userId int64) (err er
 			fmt.Sprintf("global:%s", key),
 		}
 	}
-
+    keys := []string{}
 	for key, value := range stats.Counters {
 		key = strings.ToLower(key)
+        keys = append(keys, key)
 		for _, redisKey := range redisKeys(key) {
 			redisKey = fmt.Sprintf("counter:%s", redisKey)
 			if err = conn.Send("INCRBY", redisKey, value); err != nil {
@@ -41,9 +42,14 @@ func (stats *StatsSubmission) postToRedis(conn redis.Conn, userId int64) (err er
 			}
 		}
 	}
+    if err = conn.Send("SADD", "key:counters", keys); err != nil {
+        return
+    }
 
+    keys = []string{}
 	for key, value := range stats.Gauges {
 		key = strings.ToLower(key)
+        keys = append(keys, key)
 		for _, redisKey := range redisKeys(key) {
 			redisKey = fmt.Sprintf("gauge:%s", redisKey)
 			if err = conn.Send("SET", redisKey, value); err != nil {
@@ -51,12 +57,18 @@ func (stats *StatsSubmission) postToRedis(conn redis.Conn, userId int64) (err er
 			}
 		}
 	}
+    if err = conn.Send("SADD", "key:gauges", keys); err != nil {
+        return
+    }
 
 	now := time.Now()
 	now = now.Truncate(presencePeriod)
 	expiration := now.Add(maxPresencePeriods * presencePeriod)
 
+    keys = []string{}
 	for key, value := range stats.Presence {
+		key = strings.ToLower(key)
+        keys = append(keys, key)
 		for i, redisKey := range redisKeys(key) {
 			redisKey = fmt.Sprintf("presence:%s:%d", redisKey, now.Unix())
 			// Add the timestamp to the redis key
@@ -82,7 +94,9 @@ func (stats *StatsSubmission) postToRedis(conn redis.Conn, userId int64) (err er
 			}
 		}
 	}
-
+    if err = conn.Send("SADD", "key:presences", keys); err != nil {
+        return
+    }
 	err = conn.Flush()
 	return
 }
