@@ -35,9 +35,9 @@ type UserInfo struct {
 
 // Stats is a bundle of stats
 type Stats struct {
-	Counters map[string]int64 `json:"counters"`
-	Gauges   map[string]int64 `json:"gauges"`
-	Presence map[string]bool  `json:"presence"`
+	Counters  map[string]int64 `json:"counters"`
+	Gauges    map[string]int64 `json:"gauges"`
+	Presences map[string]int64 `json:"presences"`
 }
 
 // Response is a response to a stats request (submission or query)
@@ -193,8 +193,8 @@ func write(w http.ResponseWriter, statusCode int, data interface{}) {
 
 func newStats() (stats *Stats) {
 	return &Stats{
-		Counters: make(map[string]int64),
-		Gauges:   make(map[string]int64),
-		Presence: make(map[string]bool),
+		Counters:  make(map[string]int64),
+		Gauges:    make(map[string]int64),
+		Presences: make(map[string]int64),
 	}
 }

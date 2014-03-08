@@ -23,80 +23,90 @@ type StatsSubmission struct {
 // postToRedis posts Counters, Gauges and Presence for the given userId to redis
 // using INCRBY and SET respectively.
 func (stats *StatsSubmission) postToRedis(conn redis.Conn, userId int64) (err error) {
-	redisKeys := func(key string) []string {
-		key = strings.ToLower(key)
-		return []string{
-			fmt.Sprintf("user:%d:%s", userId, key),
-			fmt.Sprintf("country:%s:%s", strings.ToLower(stats.CountryCode), key),
-			fmt.Sprintf("global:%s", key),
-		}
-	}
-    keys := []string{}
-	for key, value := range stats.Counters {
-		key = strings.ToLower(key)
-        keys = append(keys, key)
-		for _, redisKey := range redisKeys(key) {
-			redisKey = fmt.Sprintf("counter:%s", redisKey)
-			if err = conn.Send("INCRBY", redisKey, value); err != nil {
-				return
-			}
-		}
-	}
-    if err = conn.Send("SADD", "key:counters", keys); err != nil {
-        return
-    }
 
-    keys = []string{}
-	for key, value := range stats.Gauges {
-		key = strings.ToLower(key)
-        keys = append(keys, key)
-		for _, redisKey := range redisKeys(key) {
-			redisKey = fmt.Sprintf("gauge:%s", redisKey)
-			if err = conn.Send("SET", redisKey, value); err != nil {
-				return
-			}
-		}
+	err = submitStats(conn, userId, stats.CountryCode, stats.Counters, "counters", func(i int, redisKey string, value int64) error {
+		redisKey = fmt.Sprintf("counter:%s", redisKey)
+		return conn.Send("INCRBY", redisKey, value)
+	})
+	if err != nil {
+		return
 	}
-    if err = conn.Send("SADD", "key:gauges", keys); err != nil {
-        return
-    }
+
+	err = submitStats(conn, userId, stats.CountryCode, stats.Gauges, "gauges", func(i int, redisKey string, value int64) error {
+		redisKey = fmt.Sprintf("gauge:%s", redisKey)
+		return conn.Send("SET", redisKey, value)
+	})
+	if err != nil {
+		return
+	}
 
 	now := time.Now()
 	now = now.Truncate(presencePeriod)
 	expiration := now.Add(maxPresencePeriods * presencePeriod)
 
-    keys = []string{}
-	for key, value := range stats.Presence {
-		key = strings.ToLower(key)
-        keys = append(keys, key)
-		for i, redisKey := range redisKeys(key) {
-			redisKey = fmt.Sprintf("presence:%s:%d", redisKey, now.Unix())
-			// Add the timestamp to the redis key
-			if i == 0 {
-				// For the first key (user-specific) simply set the presence
-				if err = conn.Send("SET", redisKey, value); err != nil {
-					return
-				}
-			} else {
-				// For the other keys (rollups), add/remove the user id to/from a set
-				var cmd string
-				if value {
-					cmd = "SADD"
-				} else {
-					cmd = "SREM"
-				}
-				if err = conn.Send(cmd, redisKey, userId); err != nil {
-					return
-				}
+	err = submitStats(conn, userId, stats.CountryCode, stats.Presences, "presences", func(i int, redisKey string, value int64) (err error) {
+		redisKey = fmt.Sprintf("presence:%s:%d", redisKey, now.Unix())
+		// Add the timestamp to the redis key
+		if i == 0 {
+			// For the first key (user-specific) simply set the presence
+			if err = conn.Send("SET", redisKey, value); err != nil {
+				return
 			}
-			if err = conn.Send("EXPIREAT", redisKey, expiration.Unix()); err != nil {
+		} else {
+			// For the other keys (rollups), add/remove the user id to/from a set
+			var cmd string
+			if value == 1 {
+				cmd = "SADD"
+			} else {
+				cmd = "SREM"
+			}
+			if err = conn.Send(cmd, redisKey, userId); err != nil {
 				return
 			}
 		}
+		err = conn.Send("EXPIREAT", redisKey, expiration.Unix())
+		return
+	})
+	if err != nil {
+		return
 	}
-    if err = conn.Send("SADD", "key:presences", keys); err != nil {
-        return
-    }
+
 	err = conn.Flush()
+	return
+}
+
+func submitStats(
+	conn redis.Conn,
+	userId int64,
+	countryCode string,
+	statsMap map[string]int64,
+	name string,
+	submitter func(i int, key string, value int64) error) (err error) {
+
+	redisKeys := func(key string) []string {
+		key = strings.ToLower(key)
+		return []string{
+			fmt.Sprintf("user:%d:%s", userId, key),
+			fmt.Sprintf("country:%s:%s", strings.ToLower(countryCode), key),
+			fmt.Sprintf("global:%s", key),
+		}
+	}
+
+	keyArgs := []interface{}{fmt.Sprintf("key:%s", name)}
+
+	for key, value := range statsMap {
+		key = strings.ToLower(key)
+		keyArgs = append(keyArgs, key)
+		i := 0
+		for _, redisKey := range redisKeys(key) {
+			if err = submitter(i, redisKey, value); err != nil {
+				return
+			}
+			i++
+		}
+	}
+
+	err = conn.Send("SADD", keyArgs...)
+
 	return
 }
