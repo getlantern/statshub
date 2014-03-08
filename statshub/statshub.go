@@ -8,7 +8,7 @@
 //
 // Example stats submission using curl against a local appengine dev server:
 //
-//     curl --data-binary '{"countryCode": "ES", "counters": { "mystat": 1, "myotherstat": 50 }, "gauges": {"mygauge": 78}, "presence": {"online": true}}' "http://localhost:8080/stats/523523?hash=c78c666ec1016b8ed66b40bb46e0883020ff7c9d2f2010c0e2dbfbfc358888a2"
+//     curl --data-binary '{"countryCode": "ES", "counters": { "mystat": 1, "myotherstat": 50 }, "gauges": {"mygauge": 78}, "presences": {"online": 1}}' "http://localhost:8080/stats/523523?hash=c78c666ec1016b8ed66b40bb46e0883020ff7c9d2f2010c0e2dbfbfc358888a2"
 //
 package statshub
 
