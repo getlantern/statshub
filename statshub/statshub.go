@@ -29,30 +29,21 @@ import (
 // Requests are authenticated using OAuth and confirmed to be for the
 // requested user by matching a sha256 hash of real userid + UserId.
 type UserInfo struct {
-	UserId uint64
+	UserId int64
 	Hash   string // sha256(real userid + userid)
 }
 
-// StatsQuery is a query for stats of a particular user, including the names
-// of the Counters, Gauges and Presence stats that are desired.
-type StatsQuery struct {
-	Counters []string
-	Gauges   []string
-	Presence []string
+// Stats is a bundle of stats
+type Stats struct {
+	Counters map[string]int64 `json:"counters"`
+	Gauges   map[string]int64 `json:"gauges"`
+	Presence map[string]bool  `json:"presence"`
 }
 
 // Response is a response to a stats request (submission or query)
 type Response struct {
 	Succeeded bool
 	Error     string
-}
-
-// QueryResponse is a Response to a StatsQuery
-type QueryResponse struct {
-	Response
-	Counters map[string]uint64
-	Gauges   map[string]uint64
-	Presence map[string]bool
 }
 
 func init() {
@@ -76,11 +67,20 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 	if "POST" == r.Method {
 		w.Header().Set("Content-Type", "application/json")
 
-		statusCode, err := postStats(r, userInfo)
+		statusCode, resp, err := postStats(r, userInfo)
 		if err != nil {
 			fail(w, statusCode, err)
 		} else {
-			succeed(w)
+			write(w, 200, resp)
+		}
+	} else if "GET" == r.Method {
+		w.Header().Set("Content-Type", "application/json")
+
+		statusCode, resp, err := getStats(r, userInfo)
+		if err != nil {
+			fail(w, statusCode, err)
+		} else {
+			write(w, 200, resp)
 		}
 	} else {
 		log.Printf("Query: %s", r.URL.Query())
@@ -89,24 +89,39 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // postStats handles a POST request to /stats
-func postStats(r *http.Request, userInfo *UserInfo) (statusCode int, err error) {
+func postStats(r *http.Request, userInfo *UserInfo) (statusCode int, resp interface{}, err error) {
 	decoder := json.NewDecoder(r.Body)
 	stats := &StatsSubmission{}
 	err = decoder.Decode(stats)
 	if err != nil {
-		return 400, fmt.Errorf("Unable to decode request: %s", err)
+		return 400, nil, fmt.Errorf("Unable to decode request: %s", err)
 	}
 
 	conn, err := connectToRedis()
 	if err != nil {
-		return 500, fmt.Errorf("Unable to connect to redis: %s", err)
+		return 500, nil, fmt.Errorf("Unable to connect to redis: %s", err)
 	}
 
 	if err = stats.postToRedis(conn, userInfo.UserId); err != nil {
-		return 500, fmt.Errorf("Unable to post stats: %s", err)
+		return 500, nil, fmt.Errorf("Unable to post stats: %s", err)
 	}
 
-	return 200, nil
+	return 200, &Response{Succeeded: true}, nil
+}
+
+// getStats handles a GET request to /stats
+func getStats(r *http.Request, userInfo *UserInfo) (statusCode int, resp interface{}, err error) {
+	query := &StatsQuery{Counters: []string{"mystat", "myotherstat"}}
+	conn, err := connectToRedis()
+	if err != nil {
+		return 500, nil, fmt.Errorf("Unable to connect to redis: %s", err)
+	}
+
+	if resp, err = query.execute(conn, userInfo.UserId); err != nil {
+		return 500, nil, fmt.Errorf("Unable to query stats: %s", err)
+	}
+
+	return 200, resp, nil
 }
 
 func getUserInfo(r *http.Request) (userInfo *UserInfo, err error) {
@@ -122,7 +137,7 @@ func getUserInfo(r *http.Request) (userInfo *UserInfo, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("Unable to convert userId %s to int: %s", userIdString, err)
 	}
-	userInfo.UserId = uint64(userIdInt)
+	userInfo.UserId = int64(userIdInt)
 
 	// Figure out the Hash
 	hashes, ok := r.URL.Query()["hash"]
@@ -160,23 +175,26 @@ func (userInfo *UserInfo) authenticateAgainst(r *http.Request) (statusCode int, 
 	}
 }
 
-func succeed(w http.ResponseWriter) {
-	response := &Response{Succeeded: true}
-	response.write(w, 200)
-}
-
 func fail(w http.ResponseWriter, statusCode int, err error) {
 	response := Response{Succeeded: false, Error: fmt.Sprintf("%s", err)}
-	response.write(w, statusCode)
+	write(w, statusCode, response)
 }
 
-func (response *Response) write(w http.ResponseWriter, statusCode int) {
+func write(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.WriteHeader(statusCode)
-	bytes, err := json.Marshal(&response)
+	bytes, err := json.Marshal(data)
 	if err == nil {
 		w.Write(bytes)
 	}
 	if err != nil {
 		log.Printf("Unable to respond to client: %s", err)
+	}
+}
+
+func newStats() (stats *Stats) {
+	return &Stats{
+		Counters: make(map[string]int64),
+		Gauges:   make(map[string]int64),
+		Presence: make(map[string]bool),
 	}
 }

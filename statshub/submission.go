@@ -16,15 +16,13 @@ const (
 // include Counters (cumulative), Gauges (point in time) and Presence
 // (online/offline).
 type StatsSubmission struct {
-	CountryCode string            `json:"countryCode"`
-	Counters    map[string]uint64 `json:"counters"`
-	Gauges      map[string]uint64 `json:"gauges"`
-	Presence    map[string]bool   `json:"presence"`
+	CountryCode string `json:"countryCode"`
+	Stats
 }
 
 // postToRedis posts Counters, Gauges and Presence for the given userId to redis
 // using INCRBY and SET respectively.
-func (stats *StatsSubmission) postToRedis(conn redis.Conn, userId uint64) (err error) {
+func (stats *StatsSubmission) postToRedis(conn redis.Conn, userId int64) (err error) {
 	redisKeys := func(key string) []string {
 		key = strings.ToLower(key)
 		return []string{
