@@ -111,13 +111,12 @@ func postStats(r *http.Request, userInfo *UserInfo) (statusCode int, resp interf
 
 // getStats handles a GET request to /stats
 func getStats(r *http.Request, userInfo *UserInfo) (statusCode int, resp interface{}, err error) {
-	query := &StatsQuery{Counters: []string{"mystat", "myotherstat"}}
 	conn, err := connectToRedis()
 	if err != nil {
 		return 500, nil, fmt.Errorf("Unable to connect to redis: %s", err)
 	}
 
-	if resp, err = query.execute(conn, userInfo.UserId); err != nil {
+	if resp, err = query(conn, userInfo.UserId); err != nil {
 		return 500, nil, fmt.Errorf("Unable to query stats: %s", err)
 	}
 
