@@ -13,17 +13,17 @@ const (
 	maxPresencePeriods = 10
 )
 
-// StatsSubmission posts stats from within a specific country.  Stats
+// StatsUpdate posts stats from within a specific country.  Stats
 // include Counter (cumulative), Gauges (point in time) and Presence
 // (online/offline).
-type StatsSubmission struct {
+type StatsUpdate struct {
 	CountryCode string `json:"countryCode"`
 	Stats
 }
 
 // postToRedis posts Counter, Gauge and Presence for the given userId to redis
 // using INCRBY and SET respectively.
-func (stats *StatsSubmission) postToRedis(userId int64) (err error) {
+func (stats *StatsUpdate) postToRedis(userId int64) (err error) {
 	// Always treat countries as lower case
 	stats.CountryCode = strings.ToLower(stats.CountryCode)
 
@@ -35,7 +35,7 @@ func (stats *StatsSubmission) postToRedis(userId int64) (err error) {
 	return
 }
 
-func writeCounters(userId int64, stats *StatsSubmission) (err error) {
+func writeCounters(userId int64, stats *StatsUpdate) (err error) {
 	var conn redis.Conn
 	if conn, err = connectToRedis(); err != nil {
 		return
@@ -71,7 +71,7 @@ func writeCounters(userId int64, stats *StatsSubmission) (err error) {
 	return
 }
 
-func writeGauges(userId int64, stats *StatsSubmission) (err error) {
+func writeGauges(userId int64, stats *StatsUpdate) (err error) {
 	var conn redis.Conn
 	if conn, err = connectToRedis(); err != nil {
 		return

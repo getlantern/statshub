@@ -6,9 +6,14 @@
 // comparing a sha-256 hash of the real userid + anonymized userid.  Stats are only stored for anonymized
 // user ids.
 //
-// Example stats submission using curl against a local appengine dev server:
+// Example stats updates using curl against a local appengine dev server:
 //
-//     curl --data-binary '{"countryCode": "ES", "counter": { "mystat": 1, "myotherstat": 50 }, "gauge": {"mygauge": 78}, "presence": {"online": 1}}' "http://localhost:8080/stats/523523?hash=c78c666ec1016b8ed66b40bb46e0883020ff7c9d2f2010c0e2dbfbfc358888a2"
+//     curl --data-binary '{"countryCode": "ES", "counter": { "mystat": 1, "myotherstat": 50 }, "gauge": {"mygauge": 78, "online": 1}}' "http://localhost:8080/stats/523523?hash=c78c666ec1016b8ed66b40bb46e0883020ff7c9d2f2010c0e2dbfbfc358888a2"
+//     curl --data-binary '{"countryCode": "ES", "counter": { "mystat": 2, "myotherstat": 60 }, "gauge": {"mygauge": 55, "online": 1}}' "http://localhost:8080/stats/523524?hash=a3df9bf064bd7e5ca062c4cba9cee839cf5e97cf5c14f5a09a57ca33a719c717"
+//
+// Example stats get:
+//
+//     curl -i "http://localhost:8080/stats/523523?hash=c78c666ec1016b8ed66b40bb46e0883020ff7c9d2f2010c0e2dbfbfc358888a2"
 //
 package statshub
 
@@ -40,7 +45,7 @@ type Stats struct {
 	Presence map[string]int64 `json:"presence"`
 }
 
-// Response is a response to a stats request (submission or query)
+// Response is a response to a stats request (update or query)
 type Response struct {
 	Succeeded bool
 	Error     string
@@ -91,7 +96,7 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 // postStats handles a POST request to /stats
 func postStats(r *http.Request, userInfo *UserInfo) (statusCode int, resp interface{}, err error) {
 	decoder := json.NewDecoder(r.Body)
-	stats := &StatsSubmission{}
+	stats := &StatsUpdate{}
 	err = decoder.Decode(stats)
 	if err != nil {
 		return 400, nil, fmt.Errorf("Unable to decode request: %s", err)
