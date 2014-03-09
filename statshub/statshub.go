@@ -76,11 +76,11 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	statusCode, err := userInfo.authenticateAgainst(r)
-	if err != nil {
-		fail(w, statusCode, err)
-		return
-	}
+	// statusCode, err := userInfo.authenticateAgainst(r)
+	// if err != nil {
+	// 	fail(w, statusCode, err)
+	// 	return
+	// }
 
 	if "POST" == r.Method {
 		w.Header().Set("Content-Type", "application/json")
@@ -134,10 +134,10 @@ func getStats(r *http.Request, userInfo *UserInfo) (statusCode int, resp interfa
 	}
 
 	conn, err := connectToRedis(redisDialerFor(context))
-	defer conn.Close()
 	if err != nil {
 		return 500, nil, fmt.Errorf("Unable to connect to redis: %s", err)
 	}
+	defer conn.Close()
 
 	var cacheItem *memcache.Item
 	var calculateRollups = false

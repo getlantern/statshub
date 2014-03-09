@@ -7,14 +7,19 @@ import (
 )
 
 const (
+	connectionPoolSize = 1000
+
 	redisConnectTimeout = 10 * time.Second
 	redisReadTimeout    = 10 * time.Second
 	redisWriteTimeout   = 10 * time.Second
 )
 
+var (
+	connPool = make(chan redis.Conn, 1000)
+)
+
 // redisConn is a redis.Conn that stops processing new commands after it
-// encounters its first error.  Unlike redis.Conn, it is not safe to use from
-// multiple goroutines.
+// encounters its first error.
 type redisConn struct {
 	orig redis.Conn
 	err  error
@@ -24,6 +29,17 @@ type redisDialer func(addr string, connectTimeout time.Duration) (net.Conn, erro
 
 // connectToRedis() connects to our cloud Redis server and authenticates
 func connectToRedis(dial redisDialer) (conn redis.Conn, err error) {
+	select {
+	case c := <-connPool:
+		// Use pooled connection
+		return c, nil
+	default:
+		// Create new connection
+		return doConnectToRedis(dial)
+	}
+}
+
+func doConnectToRedis(dial redisDialer) (conn redis.Conn, err error) {
 	var nconn net.Conn
 
 	if nconn, err = dial(redisAddr, redisConnectTimeout); err != nil {
@@ -37,7 +53,9 @@ func connectToRedis(dial redisDialer) (conn redis.Conn, err error) {
 }
 
 func (conn *redisConn) Close() error {
-	return conn.orig.Close()
+	// Return connection to pool
+	connPool <- conn
+	return nil
 }
 
 func (conn *redisConn) Err() error {
