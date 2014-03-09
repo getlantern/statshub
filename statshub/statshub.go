@@ -140,7 +140,7 @@ func getStats(r *http.Request, userInfo *UserInfo) (statusCode int, resp interfa
 	var cacheItem *memcache.Item
 	var calculateRollups = false
 	if cacheItem, err = memcache.Get(context, "rollups"); err == memcache.ErrCacheMiss {
-		context.Info("Recomputing rollups")
+		context.Infof("Recomputing rollups")
 		calculateRollups = true
 	} else if err != nil {
 		return

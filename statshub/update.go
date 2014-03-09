@@ -70,6 +70,11 @@ func writeCounters(context appengine.Context, userId int64, stats *StatsUpdate) 
 		return
 	}
 
+	// Save country
+	if err = conn.Send("SADD", "countries", stats.CountryCode); err != nil {
+		return
+	}
+
 	err = conn.Flush()
 	return
 }
