@@ -1,6 +1,7 @@
 package statshub
 
 import (
+	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"log"
 )
@@ -14,30 +15,59 @@ type QueryResponse struct {
 }
 
 func query(conn redis.Conn, userId int64) (resp *QueryResponse, err error) {
-	resp = &QueryResponse{Global: newStats()}
+	resp = &QueryResponse{
+		User:       newStats(),
+		Global:     newStats(),
+		PerCountry: make(map[string]*Stats),
+	}
 
-	var allStats []Stat
-	allStats, err = buildStats(conn)
-	if err != nil {
+	var counterKeys []string
+	if counterKeys, err = listStatKeys(conn, "counter"); err != nil {
 		return
 	}
-
-	log.Printf("All stats: %s", allStats)
-
-	// Prepare reads
-	for _, stat := range allStats {
-		if err = stat.prepareRead(conn, "global"); err != nil {
+	for _, key := range counterKeys {
+		userKey := redisKey("counter", fmt.Sprintf("user:%d", userId), key)
+		globalKey := redisKey("counter", "global", key)
+		if err = conn.Send("GET", userKey); err != nil {
 			return
 		}
-	}
-	// Execute
-	conn.Flush()
-	// Save results
-	for _, stat := range allStats {
-		if err = stat.saveResult(conn, "global", resp.Global); err != nil {
+		if err = conn.Send("GET", globalKey); err != nil {
 			return
+		}
+		for _, countryCode := range allCountryCodes {
+			countryKey := redisKey("counter", fmt.Sprintf("country:%s", countryCode), key)
+			if err = conn.Send("GET", countryKey); err != nil {
+				return
+			}
+		}
+	}
+	conn.Flush()
+	for _, key := range counterKeys {
+		var val int64
+		if val, err = receive(conn); err != nil {
+			return
+		}
+		resp.User.Counter[key] = val
+		if val, err = receive(conn); err != nil {
+			return
+		}
+		resp.Global.Counter[key] = val
+		for _, countryCode := range allCountryCodes {
+			if val, err = receive(conn); err != nil {
+				return
+			}
+			countryStats := resp.PerCountry[countryCode]
+			if countryStats == nil {
+				countryStats = newStats()
+				resp.PerCountry[countryCode] = countryStats
+			}
+			countryStats.Counter[key] = val
 		}
 	}
 
 	return
+}
+
+func dontCallMe() {
+	log.Fatalf("Dammit, you called me!")
 }

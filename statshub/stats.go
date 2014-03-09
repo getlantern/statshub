@@ -7,33 +7,6 @@ import (
 	"strconv"
 )
 
-type Stat interface {
-	prepareRead(conn redis.Conn, group string) error
-
-	saveResult(conn redis.Conn, group string, stats *Stats) error
-}
-
-type Counter string
-
-type Gauge string
-
-func (counter *Counter) prepareRead(conn redis.Conn, group string) error {
-	return conn.Send("GET", redisKey("counter", group, string(*counter)))
-}
-
-func (counter *Counter) saveResult(conn redis.Conn, group string, stats *Stats) error {
-	ival, err := conn.Receive()
-	if err != nil {
-		return err
-	}
-	val, err := fromRedisVal(ival)
-	if err != nil {
-		return err
-	}
-	stats.Counter[string(*counter)] = val
-	return nil
-}
-
 func receive(conn redis.Conn) (val int64, err error) {
 	var ival interface{}
 	if ival, err = conn.Receive(); err != nil {
@@ -60,46 +33,19 @@ func fromRedisVal(redisVal interface{}) (val int64, err error) {
 	return
 }
 
-func redisKey(statType string, group string, key string) string {
+func redisKey(statType string, group string, key interface{}) string {
 	return fmt.Sprintf("%s:%s:%s", statType, group, key)
 }
 
-func buildStats(conn redis.Conn) (allStats []Stat, err error) {
-	allStats = make([]Stat, 0)
-	var ikeys []interface{}
-
-	if ikeys, err = listStats(conn, "counter"); err != nil {
-		return
-	}
-
-	for _, ikey := range ikeys {
-		counter := Counter(string(ikey.([]uint8)))
-		allStats = append(allStats, &counter)
-	}
-
-	// if ikeys, err = listStats(conn, "gauge"); err != nil {
-	//  return
-	// }
-	// for _, ikey := range ikeys {
-	//  allStats[i] = Counter(string(ikey.([]uint8)))
-	//  i+= 1
-	// }
-
-	// if ikeys, err = listStats(conn, "presence"); err != nil {
-	//  return
-	// }
-	// for _, ikey := range ikeys {
-	//  allStats[i] = Counter(string(ikey.([]uint8)))
-	//  i+= 1
-	// }
-
-	return
-}
-
-func listStats(conn redis.Conn, group string) (ikeys []interface{}, err error) {
+func listStatKeys(conn redis.Conn, statType string) (keys []string, err error) {
 	var tmpKeys interface{}
-	if tmpKeys, err = conn.Do("SMEMBERS", fmt.Sprintf("key:%s", group)); err != nil {
+	if tmpKeys, err = conn.Do("SMEMBERS", fmt.Sprintf("key:%s", statType)); err != nil {
 		return
 	}
-	return tmpKeys.([]interface{}), nil
+	ikeys := tmpKeys.([]interface{})
+	keys = make([]string, len(ikeys))
+	for i, ikey := range ikeys {
+		keys[i] = string(ikey.([]uint8))
+	}
+	return
 }

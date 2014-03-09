@@ -1,6 +1,7 @@
 // This file contains a list of all country codes
 package statshub
 
+// TODO: dynamically build this in redis
 var (
 	allCountryCodes = []string{
 		"ad",
