@@ -19,6 +19,7 @@ package statshub
 
 import (
 	"appengine"
+	"appengine/memcache"
 	"appengine/user"
 	"crypto/sha256"
 	"encoding/hex"
@@ -28,6 +29,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
+)
+
+const (
+	rollupExpiration = 1 * time.Minute
 )
 
 // UserInfo captures the UserId and authentication Hash for a request.
@@ -36,6 +42,18 @@ import (
 type UserInfo struct {
 	UserId int64
 	Hash   string // sha256(real userid + userid)
+}
+
+// ClientQueryResponse is a Response to a StatsQuery
+type ClientQueryResponse struct {
+	Response
+	User    *Stats           `json:"user"` // Stats for the user
+	Rollups *json.RawMessage `json:"rollups"`
+}
+
+type CachedRollups struct {
+	Global     *Stats            `json:"global"`     // Global stats
+	PerCountry map[string]*Stats `json:"perCountry"` // Maps country codes to stats for those countries
 }
 
 // Response is a response to a stats request (update or query)
@@ -104,16 +122,52 @@ func postStats(r *http.Request, userInfo *UserInfo) (statusCode int, resp interf
 
 // getStats handles a GET request to /stats
 func getStats(r *http.Request, userInfo *UserInfo) (statusCode int, resp interface{}, err error) {
+	clientResp := &ClientQueryResponse{
+		Response: Response{Succeeded: true},
+	}
+
 	conn, err := connectToRedis()
 	if err != nil {
 		return 500, nil, fmt.Errorf("Unable to connect to redis: %s", err)
 	}
 
-	if resp, err = query(conn, userInfo.UserId); err != nil {
-		return 500, nil, fmt.Errorf("Unable to query stats: %s", err)
+	context := appengine.NewContext(r)
+	var cacheItem *memcache.Item
+	var calculateRollups = false
+	if cacheItem, err = memcache.Get(context, "rollups"); err == memcache.ErrCacheMiss {
+		log.Println("Recomputing rollups")
+		calculateRollups = true
+	} else if err != nil {
+		return
+	} else {
+		raw := json.RawMessage(cacheItem.Value)
+		clientResp.Rollups = &raw
 	}
 
-	return 200, resp, nil
+	var queryResp *QueryResponse
+	if queryResp, err = query(conn, userInfo.UserId, calculateRollups); err != nil {
+		return 500, nil, fmt.Errorf("Unable to query stats: %s", err)
+	}
+	clientResp.User = queryResp.User
+	if calculateRollups {
+		rollups := &CachedRollups{
+			Global:     queryResp.Global,
+			PerCountry: queryResp.PerCountry,
+		}
+		bytes, _ := json.Marshal(&rollups)
+		raw := json.RawMessage(bytes)
+		clientResp.Rollups = &raw
+		cacheItem = &memcache.Item{
+			Key:        "rollups",
+			Value:      bytes,
+			Expiration: rollupExpiration,
+		}
+		if cacheErr := memcache.Add(context, cacheItem); cacheErr != nil {
+			context.Warningf("Unable to cache rollups: %s", cacheErr)
+		}
+	}
+
+	return 200, clientResp, nil
 }
 
 func getUserInfo(r *http.Request) (userInfo *UserInfo, err error) {

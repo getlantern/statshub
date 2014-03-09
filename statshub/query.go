@@ -9,29 +9,28 @@ import (
 
 // QueryResponse is a Response to a StatsQuery
 type QueryResponse struct {
-	Response
 	User       *Stats            `json:"user"`       // Stats for the user
 	Global     *Stats            `json:"global"`     // Global stats
 	PerCountry map[string]*Stats `json:"perCountry"` // Maps country codes to stats for those countries
 }
 
-func query(conn redis.Conn, userId int64) (resp *QueryResponse, err error) {
+func query(conn redis.Conn, userId int64, includeRollups bool) (resp *QueryResponse, err error) {
 	resp = &QueryResponse{
 		User:       newStats(),
 		Global:     newStats(),
 		PerCountry: make(map[string]*Stats),
 	}
 
-	if err = queryCounters(conn, userId, resp); err != nil {
+	if err = queryCounters(conn, userId, resp, includeRollups); err != nil {
 		return
 	}
 
-	err = queryGauges(conn, userId, resp)
+	err = queryGauges(conn, userId, resp, includeRollups)
 
 	return
 }
 
-func queryCounters(conn redis.Conn, userId int64, resp *QueryResponse) (err error) {
+func queryCounters(conn redis.Conn, userId int64, resp *QueryResponse, includeRollups bool) (err error) {
 	var counterKeys []string
 	if counterKeys, err = listStatKeys(conn, "counter"); err != nil {
 		return
@@ -42,13 +41,15 @@ func queryCounters(conn redis.Conn, userId int64, resp *QueryResponse) (err erro
 		if err = conn.Send("GET", userKey); err != nil {
 			return
 		}
-		if err = conn.Send("GET", globalKey); err != nil {
-			return
-		}
-		for _, countryCode := range allCountryCodes {
-			countryKey := redisKey("counter", fmt.Sprintf("country:%s", countryCode), key)
-			if err = conn.Send("GET", countryKey); err != nil {
+		if includeRollups {
+			if err = conn.Send("GET", globalKey); err != nil {
 				return
+			}
+			for _, countryCode := range allCountryCodes {
+				countryKey := redisKey("counter", fmt.Sprintf("country:%s", countryCode), key)
+				if err = conn.Send("GET", countryKey); err != nil {
+					return
+				}
 			}
 		}
 	}
@@ -60,28 +61,30 @@ func queryCounters(conn redis.Conn, userId int64, resp *QueryResponse) (err erro
 		}
 		resp.User.Counter[key] = val
 
-		if val, err = receive(conn); err != nil {
-			return
-		}
-		resp.Global.Counter[key] = val
-
-		for _, countryCode := range allCountryCodes {
+		if includeRollups {
 			if val, err = receive(conn); err != nil {
 				return
 			}
-			countryStats := resp.PerCountry[countryCode]
-			if countryStats == nil {
-				countryStats = newStats()
-				resp.PerCountry[countryCode] = countryStats
+			resp.Global.Counter[key] = val
+
+			for _, countryCode := range allCountryCodes {
+				if val, err = receive(conn); err != nil {
+					return
+				}
+				countryStats := resp.PerCountry[countryCode]
+				if countryStats == nil {
+					countryStats = newStats()
+					resp.PerCountry[countryCode] = countryStats
+				}
+				countryStats.Counter[key] = val
 			}
-			countryStats.Counter[key] = val
 		}
 	}
 
 	return
 }
 
-func queryGauges(conn redis.Conn, userId int64, resp *QueryResponse) (err error) {
+func queryGauges(conn redis.Conn, userId int64, resp *QueryResponse, includeRollups bool) (err error) {
 	periods := make([]int64, lookbackPeriods)
 	start := time.Now().Truncate(gaugePeriod).Add(-1 * (lookbackPeriods - 1) * gaugePeriod)
 	for i := 0; i < lookbackPeriods; i++ {
@@ -95,18 +98,20 @@ func queryGauges(conn redis.Conn, userId int64, resp *QueryResponse) (err error)
 	for _, key := range gaugeKeys {
 		for _, period := range periods {
 			userKey := redisKey("gauge", fmt.Sprintf("user:%d", userId), keyForPeriod(key, period))
-			log.Printf("User key: %s", userKey)
 			globalKey := redisKey("gauge", "global", keyForPeriod(key, period))
 			if err = conn.Send("GET", userKey); err != nil {
 				return
 			}
-			if err = conn.Send("GET", globalKey); err != nil {
-				return
-			}
-			for _, countryCode := range allCountryCodes {
-				countryKey := redisKey("gauge", fmt.Sprintf("country:%s", countryCode), keyForPeriod(key, period))
-				if err = conn.Send("GET", countryKey); err != nil {
+
+			if includeRollups {
+				if err = conn.Send("GET", globalKey); err != nil {
 					return
+				}
+				for _, countryCode := range allCountryCodes {
+					countryKey := redisKey("gauge", fmt.Sprintf("country:%s", countryCode), keyForPeriod(key, period))
+					if err = conn.Send("GET", countryKey); err != nil {
+						return
+					}
 				}
 			}
 		}
@@ -124,29 +129,34 @@ func queryGauges(conn redis.Conn, userId int64, resp *QueryResponse) (err error)
 			}
 			userTotal += val
 
-			if val, err = receive(conn); err != nil {
-				return
-			}
-			globalTotal += val
-
-			for _, countryCode := range allCountryCodes {
+			if includeRollups {
 				if val, err = receive(conn); err != nil {
 					return
 				}
-				countryTotals[countryCode] += val
+				globalTotal += val
+
+				for _, countryCode := range allCountryCodes {
+					if val, err = receive(conn); err != nil {
+						return
+					}
+					countryTotals[countryCode] += val
+				}
 			}
 		}
 
 		log.Printf("%s: %d", key, userTotal)
 		resp.User.Gauge[key] = userTotal / lookbackPeriods
-		resp.Global.Gauge[key] = globalTotal / lookbackPeriods
-		for _, countryCode := range allCountryCodes {
-			countryStats := resp.PerCountry[countryCode]
-			if countryStats == nil {
-				countryStats = newStats()
-				resp.PerCountry[countryCode] = countryStats
+
+		if includeRollups {
+			resp.Global.Gauge[key] = globalTotal / lookbackPeriods
+			for _, countryCode := range allCountryCodes {
+				countryStats := resp.PerCountry[countryCode]
+				if countryStats == nil {
+					countryStats = newStats()
+					resp.PerCountry[countryCode] = countryStats
+				}
+				countryStats.Gauge[key] = countryTotals[countryCode] / lookbackPeriods
 			}
-			countryStats.Gauge[key] = countryTotals[countryCode] / lookbackPeriods
 		}
 	}
 
