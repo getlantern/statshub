@@ -5,7 +5,7 @@
 //
 // To run a local server for testing:
 //
-//     go run statshub.go
+//     REDIS_ADDR=<host:port> REDIS_PASS=<password> PORT=9000 go run statshub.go
 //
 // Example stats updates using curl against the local server:
 //
