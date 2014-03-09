@@ -38,13 +38,6 @@ type UserInfo struct {
 	Hash   string // sha256(real userid + userid)
 }
 
-// Stats is a bundle of stats
-type Stats struct {
-	Counter  map[string]int64 `json:"counter"`
-	Gauge    map[string]int64 `json:"gauge"`
-	Presence map[string]int64 `json:"presence"`
-}
-
 // Response is a response to a stats request (update or query)
 type Response struct {
 	Succeeded bool
@@ -166,7 +159,6 @@ func (userInfo *UserInfo) authenticateAgainst(r *http.Request) (statusCode int, 
 	hashInput := fmt.Sprintf("%s%d", currentUser.Email, userInfo.UserId)
 	hasher.Write([]byte(hashInput))
 	expectedHash := hex.EncodeToString(hasher.Sum(nil))
-	log.Printf("Expected hash: %s", expectedHash)
 
 	if expectedHash != userInfo.Hash {
 		return 403, fmt.Errorf("Hash mismatch, authentication failure")
@@ -188,13 +180,5 @@ func write(w http.ResponseWriter, statusCode int, data interface{}) {
 	}
 	if err != nil {
 		log.Printf("Unable to respond to client: %s", err)
-	}
-}
-
-func newStats() (stats *Stats) {
-	return &Stats{
-		Counter:  make(map[string]int64),
-		Gauge:    make(map[string]int64),
-		Presence: make(map[string]int64),
 	}
 }

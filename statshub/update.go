@@ -9,19 +9,20 @@ import (
 )
 
 const (
-	presencePeriod     = 5 * time.Minute
-	maxPresencePeriods = 10
+	gaugePeriod       = 5 * time.Minute
+	lookbackPeriods   = 6
+	expirationPeriods = lookbackPeriods + 2
 )
 
 // StatsUpdate posts stats from within a specific country.  Stats
-// include Counter (cumulative), Gauges (point in time) and Presence
+// include Counter (cumulative) and Gauges (point in time)
 // (online/offline).
 type StatsUpdate struct {
 	CountryCode string `json:"countryCode"`
 	Stats
 }
 
-// postToRedis posts Counter, Gauge and Presence for the given userId to redis
+// postToRedis posts Counter and Gauge for the given userId to redis
 // using INCRBY and SET respectively.
 func (stats *StatsUpdate) postToRedis(userId int64) (err error) {
 	// Always treat countries as lower case
@@ -77,18 +78,36 @@ func writeGauges(userId int64, stats *StatsUpdate) (err error) {
 		return
 	}
 
+	now := time.Now()
+	now = now.Truncate(gaugePeriod)
+	expiration := now.Add(expirationPeriods * gaugePeriod)
+
 	values := stats.Gauge
 	keyArgs := make([]interface{}, len(values)+1)
 	keyArgs[0] = "key:gauge"
 	i := 1
 
+	keyWithDate := func(key string) string {
+		return fmt.Sprintf("%s:%d", key, now.Unix())
+	}
+
 	// Set gauges at user level
 	for key, value := range values {
-		key = strings.ToLower(key)
 		keyArgs[i] = key
 		i++
-		redisKey := redisKey("gauge", fmt.Sprintf("user:%d", userId), key)
+		redisKey := redisKey("gauge", fmt.Sprintf("user:%d", userId), keyWithDate(key))
 		if err = conn.Send("GETSET", redisKey, value); err != nil {
+			return
+		}
+	}
+
+	// The reason we don't do EXPIREAT in the above loop is that the code for
+	// country and global rollups needs to read the return values from GETSET,
+	// and we don't want to bother with interleaving those with the EXPIREAT
+	// return values.
+	for key, _ := range values {
+		redisKey := redisKey("gauge", fmt.Sprintf("user:%d", userId), keyWithDate(key))
+		if err = conn.Send("EXPIREAT", redisKey, expiration.Unix()); err != nil {
 			return
 		}
 	}
@@ -105,12 +124,18 @@ func writeGauges(userId int64, stats *StatsUpdate) (err error) {
 		}
 		delta := value - oldValue
 		log.Printf("%s value: %d, oldValue: %d, delta: %d", key, value, oldValue, delta)
-		countryKey := redisKey("gauge", fmt.Sprintf("country:%s", stats.CountryCode), key)
-		globalKey := redisKey("gauge", "global", key)
+		countryKey := redisKey("gauge", fmt.Sprintf("country:%s", stats.CountryCode), keyWithDate(key))
+		globalKey := redisKey("gauge", "global", keyWithDate(key))
 		if err = conn.Send("INCRBY", countryKey, delta); err != nil {
 			return
 		}
+		if err = conn.Send("EXPIREAT", countryKey, expiration.Unix()); err != nil {
+			return
+		}
 		if err = conn.Send("INCRBY", globalKey, delta); err != nil {
+			return
+		}
+		if err = conn.Send("EXPIREAT", globalKey, expiration.Unix()); err != nil {
 			return
 		}
 	}

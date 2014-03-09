@@ -3,16 +3,27 @@ package statshub
 import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
-	"log"
 	"strconv"
 )
+
+// Stats is a bundle of stats
+type Stats struct {
+	Counter map[string]int64 `json:"counter"`
+	Gauge   map[string]int64 `json:"gauge"`
+}
+
+func newStats() (stats *Stats) {
+	return &Stats{
+		Counter: make(map[string]int64),
+		Gauge:   make(map[string]int64),
+	}
+}
 
 func receive(conn redis.Conn) (val int64, err error) {
 	var ival interface{}
 	if ival, err = conn.Receive(); err != nil {
 		return
 	}
-	log.Printf("Received: %s", ival)
 	val, err = fromRedisVal(ival)
 	return
 }
