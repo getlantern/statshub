@@ -60,3 +60,16 @@ func listStatKeys(conn redis.Conn, statType string) (keys []string, err error) {
 	}
 	return
 }
+
+func listCountries(conn redis.Conn) (countries []string, err error) {
+	var icountries interface{}
+	if icountries, err = conn.Do("SMEMBERS", "countries"); err != nil {
+		return
+	}
+	iacountries := icountries.([]interface{})
+	countries = make([]string, len(iacountries))
+	for i, country := range iacountries {
+		countries[i] = string(country.([]uint8))
+	}
+	return
+}

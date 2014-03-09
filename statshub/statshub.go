@@ -8,8 +8,8 @@
 //
 // Example stats updates using curl against a local appengine dev server:
 //
-//     curl --data-binary '{"countryCode": "ES", "counter": { "mystat": 1, "myotherstat": 50 }, "gauge": {"mygauge": 78, "online": 1}}' "http://localhost:8080/stats/523523?hash=c78c666ec1016b8ed66b40bb46e0883020ff7c9d2f2010c0e2dbfbfc358888a2"
-//     curl --data-binary '{"countryCode": "ES", "counter": { "mystat": 2, "myotherstat": 60 }, "gauge": {"mygauge": 55, "online": 1}}' "http://localhost:8080/stats/523524?hash=a3df9bf064bd7e5ca062c4cba9cee839cf5e97cf5c14f5a09a57ca33a719c717"
+//     curl --data-binary '{"countryCode": "es", "counter": { "mystat": 1, "myotherstat": 50 }, "gauge": {"mygauge": 78, "online": 1}}' "http://localhost:8080/stats/523523?hash=c78c666ec1016b8ed66b40bb46e0883020ff7c9d2f2010c0e2dbfbfc358888a2"
+//     curl --data-binary '{"countryCode": "es", "counter": { "mystat": 2, "myotherstat": 60 }, "gauge": {"mygauge": 55, "online": 1}}' "http://localhost:8080/stats/523524?hash=a3df9bf064bd7e5ca062c4cba9cee839cf5e97cf5c14f5a09a57ca33a719c717"
 //
 // Example stats get:
 //
@@ -20,12 +20,14 @@ package statshub
 import (
 	"appengine"
 	"appengine/memcache"
+	"appengine/socket"
 	"appengine/user"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -114,7 +116,7 @@ func postStats(r *http.Request, userInfo *UserInfo) (statusCode int, resp interf
 	}
 
 	context := appengine.NewContext(r)
-	if err = stats.postToRedis(context, userInfo.UserId); err != nil {
+	if err = stats.postToRedis(redisDialerFor(context), userInfo.UserId); err != nil {
 		formattedError := fmt.Errorf("Unable to post stats: %s", err)
 		context.Errorf("%s", formattedError)
 		return 500, nil, formattedError
@@ -131,7 +133,7 @@ func getStats(r *http.Request, userInfo *UserInfo) (statusCode int, resp interfa
 		Response: Response{Succeeded: true},
 	}
 
-	conn, err := connectToRedis(context)
+	conn, err := connectToRedis(redisDialerFor(context))
 	defer conn.Close()
 	if err != nil {
 		return 500, nil, fmt.Errorf("Unable to connect to redis: %s", err)
@@ -239,5 +241,17 @@ func write(w http.ResponseWriter, statusCode int, data interface{}) {
 	}
 	if err != nil {
 		log.Printf("Unable to respond to client: %s", err)
+	}
+}
+
+// redisDialerFor builds a redisDialer using on the current appengine.Context.
+// If running in the dev app server, redisDialer simply uses net.DialTimeout.
+func redisDialerFor(context appengine.Context) redisDialer {
+	return func(addr string, connectTimeout time.Duration) (net.Conn, error) {
+		if appengine.IsDevAppServer() {
+			return net.DialTimeout("tcp", redisAddr, redisConnectTimeout)
+		} else {
+			return socket.DialTimeout(context, "tcp", redisAddr, redisConnectTimeout)
+		}
 	}
 }

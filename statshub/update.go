@@ -1,7 +1,6 @@
 package statshub
 
 import (
-	"appengine"
 	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"log"
@@ -25,21 +24,21 @@ type StatsUpdate struct {
 
 // postToRedis posts Counter and Gauge for the given userId to redis
 // using INCRBY and SET respectively.
-func (stats *StatsUpdate) postToRedis(context appengine.Context, userId int64) (err error) {
+func (stats *StatsUpdate) postToRedis(dial redisDialer, userId int64) (err error) {
 	// Always treat countries as lower case
 	stats.CountryCode = strings.ToLower(stats.CountryCode)
 
-	if err = writeCounters(context, userId, stats); err != nil {
+	if err = writeCounters(dial, userId, stats); err != nil {
 		return
 	}
-	err = writeGauges(context, userId, stats)
+	err = writeGauges(dial, userId, stats)
 
 	return
 }
 
-func writeCounters(context appengine.Context, userId int64, stats *StatsUpdate) (err error) {
+func writeCounters(dial redisDialer, userId int64, stats *StatsUpdate) (err error) {
 	var conn redis.Conn
-	if conn, err = connectToRedis(context); err != nil {
+	if conn, err = connectToRedis(dial); err != nil {
 		return
 	}
 	defer conn.Close()
@@ -55,33 +54,24 @@ func writeCounters(context appengine.Context, userId int64, stats *StatsUpdate) 
 		userKey := redisKey("counter", fmt.Sprintf("user:%d", userId), key)
 		countryKey := redisKey("counter", fmt.Sprintf("country:%s", stats.CountryCode), key)
 		globalKey := redisKey("counter", "global", key)
-		if err = conn.Send("INCRBY", userKey, value); err != nil {
-			return
-		}
-		if err = conn.Send("INCRBY", countryKey, value); err != nil {
-			return
-		}
-		if err = conn.Send("INCRBY", globalKey, value); err != nil {
-			return
-		}
+		err = conn.Send("INCRBY", userKey, value)
+		err = conn.Send("INCRBY", countryKey, value)
+		err = conn.Send("INCRBY", globalKey, value)
 	}
 
-	if err = conn.Send("SADD", keyArgs...); err != nil {
-		return
-	}
+	// Remember counter keys
+	err = conn.Send("SADDST", keyArgs...)
 
 	// Save country
-	if err = conn.Send("SADD", "countries", stats.CountryCode); err != nil {
-		return
-	}
+	err = conn.Send("SADD", "countries", stats.CountryCode)
 
 	err = conn.Flush()
 	return
 }
 
-func writeGauges(context appengine.Context, userId int64, stats *StatsUpdate) (err error) {
+func writeGauges(dial redisDialer, userId int64, stats *StatsUpdate) (err error) {
 	var conn redis.Conn
-	if conn, err = connectToRedis(context); err != nil {
+	if conn, err = connectToRedis(dial); err != nil {
 		return
 	}
 	defer conn.Close()
@@ -104,9 +94,7 @@ func writeGauges(context appengine.Context, userId int64, stats *StatsUpdate) (e
 		keyArgs[i] = key
 		i++
 		redisKey := redisKey("gauge", fmt.Sprintf("user:%d", userId), keyWithDate(key))
-		if err = conn.Send("GETSET", redisKey, value); err != nil {
-			return
-		}
+		err = conn.Send("GETSET", redisKey, value)
 	}
 
 	// The reason we don't do EXPIREAT in the above loop is that the code for
@@ -115,14 +103,10 @@ func writeGauges(context appengine.Context, userId int64, stats *StatsUpdate) (e
 	// return values.
 	for key, _ := range values {
 		redisKey := redisKey("gauge", fmt.Sprintf("user:%d", userId), keyWithDate(key))
-		if err = conn.Send("EXPIREAT", redisKey, expiration.Unix()); err != nil {
-			return
-		}
+		err = conn.Send("EXPIREAT", redisKey, expiration.Unix())
 	}
 
-	if err = conn.Flush(); err != nil {
-		return
-	}
+	err = conn.Flush()
 
 	// Roll up gauges to country and global level
 	for key, value := range values {
@@ -134,24 +118,14 @@ func writeGauges(context appengine.Context, userId int64, stats *StatsUpdate) (e
 		log.Printf("%s value: %d, oldValue: %d, delta: %d", key, value, oldValue, delta)
 		countryKey := redisKey("gauge", fmt.Sprintf("country:%s", stats.CountryCode), keyWithDate(key))
 		globalKey := redisKey("gauge", "global", keyWithDate(key))
-		if err = conn.Send("INCRBY", countryKey, delta); err != nil {
-			return
-		}
-		if err = conn.Send("EXPIREAT", countryKey, expiration.Unix()); err != nil {
-			return
-		}
-		if err = conn.Send("INCRBY", globalKey, delta); err != nil {
-			return
-		}
-		if err = conn.Send("EXPIREAT", globalKey, expiration.Unix()); err != nil {
-			return
-		}
+		err = conn.Send("INCRBY", countryKey, delta)
+		err = conn.Send("EXPIREAT", countryKey, expiration.Unix())
+		err = conn.Send("INCRBY", globalKey, delta)
+		err = conn.Send("EXPIREAT", globalKey, expiration.Unix())
 	}
 
 	// Remember gauge keys
-	if err = conn.Send("SADD", keyArgs...); err != nil {
-		return
-	}
+	err = conn.Send("SADD", keyArgs...)
 
 	err = conn.Flush()
 	return
