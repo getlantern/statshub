@@ -113,8 +113,11 @@ func postStats(r *http.Request, userInfo *UserInfo) (statusCode int, resp interf
 		return 400, nil, fmt.Errorf("Unable to decode request: %s", err)
 	}
 
-	if err = stats.postToRedis(userInfo.UserId); err != nil {
-		return 500, nil, fmt.Errorf("Unable to post stats: %s", err)
+	context := appengine.NewContext(r)
+	if err = stats.postToRedis(context, userInfo.UserId); err != nil {
+		formattedError := fmt.Errorf("Unable to post stats: %s", err)
+		context.Errorf("%s", formattedError)
+		return 500, nil, formattedError
 	}
 
 	return 200, &Response{Succeeded: true}, nil
@@ -122,20 +125,22 @@ func postStats(r *http.Request, userInfo *UserInfo) (statusCode int, resp interf
 
 // getStats handles a GET request to /stats
 func getStats(r *http.Request, userInfo *UserInfo) (statusCode int, resp interface{}, err error) {
+	context := appengine.NewContext(r)
+
 	clientResp := &ClientQueryResponse{
 		Response: Response{Succeeded: true},
 	}
 
-	conn, err := connectToRedis()
+	conn, err := connectToRedis(context)
+	defer conn.Close()
 	if err != nil {
 		return 500, nil, fmt.Errorf("Unable to connect to redis: %s", err)
 	}
 
-	context := appengine.NewContext(r)
 	var cacheItem *memcache.Item
 	var calculateRollups = false
 	if cacheItem, err = memcache.Get(context, "rollups"); err == memcache.ErrCacheMiss {
-		log.Println("Recomputing rollups")
+		context.Info("Recomputing rollups")
 		calculateRollups = true
 	} else if err != nil {
 		return

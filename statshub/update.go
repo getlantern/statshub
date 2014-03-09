@@ -1,6 +1,7 @@
 package statshub
 
 import (
+	"appengine"
 	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"log"
@@ -24,23 +25,24 @@ type StatsUpdate struct {
 
 // postToRedis posts Counter and Gauge for the given userId to redis
 // using INCRBY and SET respectively.
-func (stats *StatsUpdate) postToRedis(userId int64) (err error) {
+func (stats *StatsUpdate) postToRedis(context appengine.Context, userId int64) (err error) {
 	// Always treat countries as lower case
 	stats.CountryCode = strings.ToLower(stats.CountryCode)
 
-	if err = writeCounters(userId, stats); err != nil {
+	if err = writeCounters(context, userId, stats); err != nil {
 		return
 	}
-	err = writeGauges(userId, stats)
+	err = writeGauges(context, userId, stats)
 
 	return
 }
 
-func writeCounters(userId int64, stats *StatsUpdate) (err error) {
+func writeCounters(context appengine.Context, userId int64, stats *StatsUpdate) (err error) {
 	var conn redis.Conn
-	if conn, err = connectToRedis(); err != nil {
+	if conn, err = connectToRedis(context); err != nil {
 		return
 	}
+	defer conn.Close()
 
 	values := stats.Counter
 	keyArgs := make([]interface{}, len(values)+1)
@@ -72,11 +74,12 @@ func writeCounters(userId int64, stats *StatsUpdate) (err error) {
 	return
 }
 
-func writeGauges(userId int64, stats *StatsUpdate) (err error) {
+func writeGauges(context appengine.Context, userId int64, stats *StatsUpdate) (err error) {
 	var conn redis.Conn
-	if conn, err = connectToRedis(); err != nil {
+	if conn, err = connectToRedis(context); err != nil {
 		return
 	}
+	defer conn.Close()
 
 	now := time.Now()
 	now = now.Truncate(gaugePeriod)
