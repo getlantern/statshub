@@ -8,7 +8,7 @@
 //
 // Example stats submission using curl against a local appengine dev server:
 //
-//     curl --data-binary '{"countryCode": "ES", "counters": { "mystat": 1, "myotherstat": 50 }, "gauges": {"mygauge": 78}, "presences": {"online": 1}}' "http://localhost:8080/stats/523523?hash=c78c666ec1016b8ed66b40bb46e0883020ff7c9d2f2010c0e2dbfbfc358888a2"
+//     curl --data-binary '{"countryCode": "ES", "counter": { "mystat": 1, "myotherstat": 50 }, "gauge": {"mygauge": 78}, "presence": {"online": 1}}' "http://localhost:8080/stats/523523?hash=c78c666ec1016b8ed66b40bb46e0883020ff7c9d2f2010c0e2dbfbfc358888a2"
 //
 package statshub
 
@@ -35,9 +35,9 @@ type UserInfo struct {
 
 // Stats is a bundle of stats
 type Stats struct {
-	Counters  map[string]int64 `json:"counters"`
-	Gauges    map[string]int64 `json:"gauges"`
-	Presences map[string]int64 `json:"presences"`
+	Counter  map[string]int64 `json:"counter"`
+	Gauge    map[string]int64 `json:"gauge"`
+	Presence map[string]int64 `json:"presence"`
 }
 
 // Response is a response to a stats request (submission or query)
@@ -97,12 +97,7 @@ func postStats(r *http.Request, userInfo *UserInfo) (statusCode int, resp interf
 		return 400, nil, fmt.Errorf("Unable to decode request: %s", err)
 	}
 
-	conn, err := connectToRedis()
-	if err != nil {
-		return 500, nil, fmt.Errorf("Unable to connect to redis: %s", err)
-	}
-
-	if err = stats.postToRedis(conn, userInfo.UserId); err != nil {
+	if err = stats.postToRedis(userInfo.UserId); err != nil {
 		return 500, nil, fmt.Errorf("Unable to post stats: %s", err)
 	}
 
@@ -166,6 +161,7 @@ func (userInfo *UserInfo) authenticateAgainst(r *http.Request) (statusCode int, 
 	hashInput := fmt.Sprintf("%s%d", currentUser.Email, userInfo.UserId)
 	hasher.Write([]byte(hashInput))
 	expectedHash := hex.EncodeToString(hasher.Sum(nil))
+	log.Printf("Expected hash: %s", expectedHash)
 
 	if expectedHash != userInfo.Hash {
 		return 403, fmt.Errorf("Hash mismatch, authentication failure")
@@ -192,8 +188,8 @@ func write(w http.ResponseWriter, statusCode int, data interface{}) {
 
 func newStats() (stats *Stats) {
 	return &Stats{
-		Counters:  make(map[string]int64),
-		Gauges:    make(map[string]int64),
-		Presences: make(map[string]int64),
+		Counter:  make(map[string]int64),
+		Gauge:    make(map[string]int64),
+		Presence: make(map[string]int64),
 	}
 }

@@ -3,6 +3,7 @@ package statshub
 import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
+	"log"
 	"strings"
 	"time"
 )
@@ -13,61 +14,56 @@ const (
 )
 
 // StatsSubmission posts stats from within a specific country.  Stats
-// include Counters (cumulative), Gauges (point in time) and Presence
+// include Counter (cumulative), Gauges (point in time) and Presence
 // (online/offline).
 type StatsSubmission struct {
 	CountryCode string `json:"countryCode"`
 	Stats
 }
 
-// postToRedis posts Counters, Gauges and Presence for the given userId to redis
+// postToRedis posts Counter, Gauge and Presence for the given userId to redis
 // using INCRBY and SET respectively.
-func (stats *StatsSubmission) postToRedis(conn redis.Conn, userId int64) (err error) {
+func (stats *StatsSubmission) postToRedis(userId int64) (err error) {
+	// Always treat countries as lower case
+	stats.CountryCode = strings.ToLower(stats.CountryCode)
 
-	err = submitStats(conn, userId, stats.CountryCode, stats.Counters, "counters", func(i int, redisKey string, value int64) error {
-		redisKey = fmt.Sprintf("counter:%s", redisKey)
-		return conn.Send("INCRBY", redisKey, value)
-	})
-	if err != nil {
+	if err = writeCounters(userId, stats); err != nil {
+		return
+	}
+	err = writeGauges(userId, stats)
+
+	return
+}
+
+func writeCounters(userId int64, stats *StatsSubmission) (err error) {
+	var conn redis.Conn
+	if conn, err = connectToRedis(); err != nil {
 		return
 	}
 
-	err = submitStats(conn, userId, stats.CountryCode, stats.Gauges, "gauges", func(i int, redisKey string, value int64) error {
-		redisKey = fmt.Sprintf("gauge:%s", redisKey)
-		return conn.Send("SET", redisKey, value)
-	})
-	if err != nil {
-		return
-	}
+	values := stats.Counter
+	keyArgs := make([]interface{}, len(values)+1)
+	keyArgs[0] = "key:counter"
+	i := 1
 
-	now := time.Now()
-	now = now.Truncate(presencePeriod)
-	expiration := now.Add(maxPresencePeriods * presencePeriod)
-
-	err = submitStats(conn, userId, stats.CountryCode, stats.Presences, "presences", func(i int, redisKey string, value int64) (err error) {
-		redisKey = fmt.Sprintf("presence:%s:%d", redisKey, now.Unix())
-		// Add the timestamp to the redis key
-		if i == 0 {
-			// For the first key (user-specific) simply set the presence
-			if err = conn.Send("SET", redisKey, value); err != nil {
-				return
-			}
-		} else {
-			// For the other keys (rollups), add/remove the user id to/from a set
-			var cmd string
-			if value == 1 {
-				cmd = "SADD"
-			} else {
-				cmd = "SREM"
-			}
-			if err = conn.Send(cmd, redisKey, userId); err != nil {
-				return
-			}
+	for key, value := range values {
+		keyArgs[i] = key
+		i++
+		userKey := redisKey("counter", fmt.Sprintf("user:%d", userId), key)
+		countryKey := redisKey("counter", fmt.Sprintf("country:%s", stats.CountryCode), key)
+		globalKey := redisKey("counter", "global", key)
+		if err = conn.Send("INCRBY", userKey, value); err != nil {
+			return
 		}
-		err = conn.Send("EXPIREAT", redisKey, expiration.Unix())
-		return
-	})
-	if err != nil {
+		if err = conn.Send("INCRBY", countryKey, value); err != nil {
+			return
+		}
+		if err = conn.Send("INCRBY", globalKey, value); err != nil {
+			return
+		}
+	}
+
+	if err = conn.Send("SADD", keyArgs...); err != nil {
 		return
 	}
 
@@ -75,38 +71,63 @@ func (stats *StatsSubmission) postToRedis(conn redis.Conn, userId int64) (err er
 	return
 }
 
-func submitStats(
-	conn redis.Conn,
-	userId int64,
-	countryCode string,
-	statsMap map[string]int64,
-	name string,
-	submitter func(i int, key string, value int64) error) (err error) {
+func writeGauges(userId int64, stats *StatsSubmission) (err error) {
+	var conn redis.Conn
+	if conn, err = connectToRedis(); err != nil {
+		return
+	}
 
-	redisKeys := func(key string) []string {
+	values := stats.Gauge
+	keyArgs := make([]interface{}, len(values)+1)
+	keyArgs[0] = "key:gauge"
+	i := 1
+
+	// Set gauges at user level
+	for key, value := range values {
 		key = strings.ToLower(key)
-		return []string{
-			fmt.Sprintf("user:%d:%s", userId, key),
-			fmt.Sprintf("country:%s:%s", strings.ToLower(countryCode), key),
-			fmt.Sprintf("global:%s", key),
+		keyArgs[i] = key
+		i++
+		redisKey := redisKey("gauge", fmt.Sprintf("user:%d", userId), key)
+		if err = conn.Send("GETSET", redisKey, value); err != nil {
+			return
 		}
 	}
 
-	keyArgs := []interface{}{fmt.Sprintf("key:%s", name)}
+	if err = conn.Flush(); err != nil {
+		return
+	}
 
-	for key, value := range statsMap {
-		key = strings.ToLower(key)
-		keyArgs = append(keyArgs, key)
-		i := 0
-		for _, redisKey := range redisKeys(key) {
-			if err = submitter(i, redisKey, value); err != nil {
-				return
-			}
-			i++
+	// Roll up gauges to country and global level
+	for key, value := range values {
+		var oldValue int64
+		if oldValue, err = receive(conn); err != nil {
+			return
+		}
+		delta := value - oldValue
+		log.Printf("%s value: %d, oldValue: %d, delta: %d", key, value, oldValue, delta)
+		countryKey := redisKey("gauge", fmt.Sprintf("country:%s", stats.CountryCode), key)
+		globalKey := redisKey("gauge", "global", key)
+		if err = conn.Send("INCRBY", countryKey, delta); err != nil {
+			return
+		}
+		if err = conn.Send("INCRBY", globalKey, delta); err != nil {
+			return
 		}
 	}
 
-	err = conn.Send("SADD", keyArgs...)
+	// Remember gauge keys
+	if err = conn.Send("SADD", keyArgs...); err != nil {
+		return
+	}
 
+	err = conn.Flush()
+	return
+}
+
+func withLowerCaseKeys(values map[string]uint64) (lowerCased map[string]uint64) {
+	lowerCased = make(map[string]uint64)
+	for key, value := range values {
+		lowerCased[strings.ToLower(key)] = value
+	}
 	return
 }
