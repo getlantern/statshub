@@ -3,7 +3,6 @@ package statshub
 import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
-	"log"
 	"strings"
 	"time"
 )
@@ -24,21 +23,21 @@ type StatsUpdate struct {
 
 // postToRedis posts Counter and Gauge for the given userId to redis
 // using INCRBY and SET respectively.
-func (stats *StatsUpdate) postToRedis(dial redisDialer, userId int64) (err error) {
+func (stats *StatsUpdate) postToRedis(userId string) (err error) {
 	// Always treat countries as lower case
 	stats.CountryCode = strings.ToLower(stats.CountryCode)
 
-	if err = writeCounters(dial, userId, stats); err != nil {
+	if err = writeCounters(userId, stats); err != nil {
 		return
 	}
-	err = writeGauges(dial, userId, stats)
+	err = writeGauges(userId, stats)
 
 	return
 }
 
-func writeCounters(dial redisDialer, userId int64, stats *StatsUpdate) (err error) {
+func writeCounters(userId string, stats *StatsUpdate) (err error) {
 	var conn redis.Conn
-	if conn, err = connectToRedis(dial); err != nil {
+	if conn, err = connectToRedis(); err != nil {
 		return
 	}
 	defer conn.Close()
@@ -51,7 +50,7 @@ func writeCounters(dial redisDialer, userId int64, stats *StatsUpdate) (err erro
 	for key, value := range values {
 		keyArgs[i] = key
 		i++
-		userKey := redisKey("counter", fmt.Sprintf("user:%d", userId), key)
+		userKey := redisKey("counter", fmt.Sprintf("user:%s", userId), key)
 		countryKey := redisKey("counter", fmt.Sprintf("country:%s", stats.CountryCode), key)
 		globalKey := redisKey("counter", "global", key)
 		err = conn.Send("INCRBY", userKey, value)
@@ -60,7 +59,7 @@ func writeCounters(dial redisDialer, userId int64, stats *StatsUpdate) (err erro
 	}
 
 	// Remember counter keys
-	err = conn.Send("SADDST", keyArgs...)
+	err = conn.Send("SADD", keyArgs...)
 
 	// Save country
 	err = conn.Send("SADD", "countries", stats.CountryCode)
@@ -69,9 +68,9 @@ func writeCounters(dial redisDialer, userId int64, stats *StatsUpdate) (err erro
 	return
 }
 
-func writeGauges(dial redisDialer, userId int64, stats *StatsUpdate) (err error) {
+func writeGauges(userId string, stats *StatsUpdate) (err error) {
 	var conn redis.Conn
-	if conn, err = connectToRedis(dial); err != nil {
+	if conn, err = connectToRedis(); err != nil {
 		return
 	}
 	defer conn.Close()
@@ -93,7 +92,7 @@ func writeGauges(dial redisDialer, userId int64, stats *StatsUpdate) (err error)
 	for key, value := range values {
 		keyArgs[i] = key
 		i++
-		redisKey := redisKey("gauge", fmt.Sprintf("user:%d", userId), keyWithDate(key))
+		redisKey := redisKey("gauge", fmt.Sprintf("user:%s", userId), keyWithDate(key))
 		err = conn.Send("GETSET", redisKey, value)
 	}
 
@@ -102,7 +101,7 @@ func writeGauges(dial redisDialer, userId int64, stats *StatsUpdate) (err error)
 	// and we don't want to bother with interleaving those with the EXPIREAT
 	// return values.
 	for key, _ := range values {
-		redisKey := redisKey("gauge", fmt.Sprintf("user:%d", userId), keyWithDate(key))
+		redisKey := redisKey("gauge", fmt.Sprintf("user:%s", userId), keyWithDate(key))
 		err = conn.Send("EXPIREAT", redisKey, expiration.Unix())
 	}
 
@@ -115,7 +114,6 @@ func writeGauges(dial redisDialer, userId int64, stats *StatsUpdate) (err error)
 			return
 		}
 		delta := value - oldValue
-		log.Printf("%s value: %d, oldValue: %d, delta: %d", key, value, oldValue, delta)
 		countryKey := redisKey("gauge", fmt.Sprintf("country:%s", stats.CountryCode), keyWithDate(key))
 		globalKey := redisKey("gauge", "global", keyWithDate(key))
 		err = conn.Send("INCRBY", countryKey, delta)

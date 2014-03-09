@@ -2,21 +2,46 @@ package statshub
 
 import (
 	"github.com/garyburd/redigo/redis"
-	"net"
+	"log"
 	"time"
 )
 
 const (
-	connectionPoolSize = 1000
-
 	redisConnectTimeout = 10 * time.Second
 	redisReadTimeout    = 10 * time.Second
 	redisWriteTimeout   = 10 * time.Second
 )
 
 var (
-	connPool = make(chan redis.Conn, 1000)
+	pool *redis.Pool
 )
+
+func init() {
+	pool = &redis.Pool{
+		MaxIdle:     100,
+		IdleTimeout: 240 * time.Second,
+		Dial: func() (redis.Conn, error) {
+			c, err := redis.DialTimeout(
+				"tcp",
+				redisAddr,
+				redisConnectTimeout,
+				redisReadTimeout,
+				redisWriteTimeout)
+			if err != nil {
+				log.Fatalf("Unable to dial redis: %s", err)
+			}
+			if _, err := c.Do("AUTH", redisPassword); err != nil {
+				c.Close()
+				log.Fatalf("Unable to authenticate to redis: %s", err)
+			}
+			return c, err
+		},
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
+		},
+	}
+}
 
 // redisConn is a redis.Conn that stops processing new commands after it
 // encounters its first error.
@@ -25,37 +50,13 @@ type redisConn struct {
 	err  error
 }
 
-type redisDialer func(addr string, connectTimeout time.Duration) (net.Conn, error)
-
 // connectToRedis() connects to our cloud Redis server and authenticates
-func connectToRedis(dial redisDialer) (conn redis.Conn, err error) {
-	select {
-	case c := <-connPool:
-		// Use pooled connection
-		return c, nil
-	default:
-		// Create new connection
-		return doConnectToRedis(dial)
-	}
+func connectToRedis() (conn redis.Conn, err error) {
+	return &redisConn{orig: pool.Get()}, nil
 }
 
-func doConnectToRedis(dial redisDialer) (conn redis.Conn, err error) {
-	var nconn net.Conn
-
-	if nconn, err = dial(redisAddr, redisConnectTimeout); err != nil {
-		return
-	}
-
-	conn = &redisConn{orig: redis.NewConn(nconn, redisReadTimeout, redisWriteTimeout)}
-
-	_, err = conn.Do("AUTH", redisPassword)
-	return
-}
-
-func (conn *redisConn) Close() error {
-	// Return connection to pool
-	connPool <- conn
-	return nil
+func (conn *redisConn) Close() (err error) {
+	return conn.orig.Close()
 }
 
 func (conn *redisConn) Err() error {

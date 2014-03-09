@@ -14,7 +14,7 @@ type QueryResponse struct {
 	PerCountry map[string]*Stats `json:"perCountry"` // Maps country codes to stats for those countries
 }
 
-func query(conn redis.Conn, userId int64, includeRollups bool) (resp *QueryResponse, err error) {
+func query(conn redis.Conn, userId string, includeRollups bool) (resp *QueryResponse, err error) {
 	resp = &QueryResponse{
 		User:       newStats(),
 		Global:     newStats(),
@@ -35,13 +35,13 @@ func query(conn redis.Conn, userId int64, includeRollups bool) (resp *QueryRespo
 	return
 }
 
-func queryCounters(conn redis.Conn, countries []string, userId int64, resp *QueryResponse, includeRollups bool) (err error) {
+func queryCounters(conn redis.Conn, countries []string, userId string, resp *QueryResponse, includeRollups bool) (err error) {
 	var counterKeys []string
 	if counterKeys, err = listStatKeys(conn, "counter"); err != nil {
 		return
 	}
 	for _, key := range counterKeys {
-		userKey := redisKey("counter", fmt.Sprintf("user:%d", userId), key)
+		userKey := redisKey("counter", fmt.Sprintf("user:%s", userId), key)
 		globalKey := redisKey("counter", "global", key)
 		err = conn.Send("GET", userKey)
 		if includeRollups {
@@ -83,7 +83,7 @@ func queryCounters(conn redis.Conn, countries []string, userId int64, resp *Quer
 	return
 }
 
-func queryGauges(conn redis.Conn, countries []string, userId int64, resp *QueryResponse, includeRollups bool) (err error) {
+func queryGauges(conn redis.Conn, countries []string, userId string, resp *QueryResponse, includeRollups bool) (err error) {
 	periods := make([]int64, lookbackPeriods)
 	start := time.Now().Truncate(gaugePeriod).Add(-1 * (lookbackPeriods - 1) * gaugePeriod)
 	for i := 0; i < lookbackPeriods; i++ {
@@ -96,7 +96,7 @@ func queryGauges(conn redis.Conn, countries []string, userId int64, resp *QueryR
 	}
 	for _, key := range gaugeKeys {
 		for _, period := range periods {
-			userKey := redisKey("gauge", fmt.Sprintf("user:%d", userId), keyForPeriod(key, period))
+			userKey := redisKey("gauge", fmt.Sprintf("user:%s", userId), keyForPeriod(key, period))
 			globalKey := redisKey("gauge", "global", keyForPeriod(key, period))
 			err = conn.Send("GET", userKey)
 
@@ -137,7 +137,6 @@ func queryGauges(conn redis.Conn, countries []string, userId int64, resp *QueryR
 			}
 		}
 
-		log.Printf("%s: %d", key, userTotal)
 		resp.User.Gauge[key] = userTotal / lookbackPeriods
 
 		if includeRollups {
