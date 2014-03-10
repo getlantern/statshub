@@ -17,7 +17,8 @@ Gauges - these track an absolute value that can change over time (a speedometer)
 
 ```bash
 Macintosh% curl --data-binary '{"countryCode": "es", "counter": { "mystat": 1, "myotherstat": 50 }, "gauge": {"mygauge": 78, "online": 1}}' "https://pure-journey-3547.herokuapp.com/stats/523523"
-{"Succeeded":true,"Error":""}%                                                                                                                                                                              Macintosh% curl https://pure-journey-3547.herokuapp.com/stats/523523
+{"Succeeded":true,"Error":""}%
+Macintosh% curl https://pure-journey-3547.herokuapp.com/stats/523523
 {"Succeeded":true,"Error":"","user":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":39,"online":0}},"rollups":{"global":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":39,"online":0}},"perCountry":{"es":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":39,"online":0}}}}}%
 ```
 
