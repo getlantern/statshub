@@ -13,6 +13,8 @@ Counters - these keep incrementing forever (e.g. an odometer)
 
 Gauges - these track an absolute value that can change over time (a speedometer).  Gauges are stored in 5 minute intervals and the current value is calculated as the average of the last 6 intervals (i.e. the last 30 minutes)
 
+Stats are identified by a string key, which is always normalized to lowercase.
+
 Stats are always submitted for a particular userid and within a specific country code.  Stat submissions can include any number of counters and gauges.
 
 Stats query results always include all counters and gauges for the user, as well as rollups globally and rollups for each country
