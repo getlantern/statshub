@@ -11,7 +11,7 @@ There are two types of supported stats:
 
 Counters - these keep incrementing forever (e.g. an odometer)
 
-Gauges - these track an absolute value that can change over time (a speedometer).  Gauges are stored in 5 minute intervals and the current value is calculated as the average of the last 6 intervals (i.e. the last 30 minutes)
+Gauges - these track an absolute value that can change over time (a speedometer).  Statshub assumes that gauges are reported every 5 minutes.  It stores them in 6 minute buckets.  For user-level gauges, the most recent reported value is given.  For aggregate gauges, the reported values reflect the prior 6 minute bucket, thus they can be up to 6 minutes out of date.
 
 Stats are identified by a string key, which is always normalized to lowercase.
 
@@ -28,7 +28,7 @@ Here we are submitting and querying stats for the user 523523.
 Macintosh% curl --data-binary '{"countryCode": "es", "counter": { "mystat": 1, "myotherstat": 50 }, "gauge": {"mygauge": 78, "online": 1}}' "https://pure-journey-3547.herokuapp.com/stats/523523"
 {"Succeeded":true,"Error":""}%
 Macintosh% curl https://pure-journey-3547.herokuapp.com/stats/523523
-{"Succeeded":true,"Error":"","user":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":39,"online":0}},"rollups":{"global":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":39,"online":0}},"perCountry":{"es":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":39,"online":0}}}}}%
+{"Succeeded":true,"Error":"","user":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":78,"online":1}},"rollups":{"global":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":0,"online":0}},"perCountry":{"es":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":0,"online":0}}}}}%
 ```
 
 Pretty printed request data:

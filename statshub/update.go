@@ -8,9 +8,9 @@ import (
 )
 
 const (
-	gaugePeriod       = 5 * time.Minute
-	lookbackPeriods   = 6
-	expirationPeriods = lookbackPeriods + 2
+	// reportingPeriod is how frequently clients report stats
+	reportingPeriod = 5 * time.Minute
+	statsPeriod     = reportingPeriod + 1*time.Minute
 )
 
 // StatsUpdate posts stats from within a specific country.  Stats
@@ -76,8 +76,8 @@ func writeGauges(userId string, stats *StatsUpdate) (err error) {
 	defer conn.Close()
 
 	now := time.Now()
-	now = now.Truncate(gaugePeriod)
-	expiration := now.Add(expirationPeriods * gaugePeriod)
+	now = now.Truncate(statsPeriod)
+	expiration := now.Add(3 * statsPeriod)
 
 	values := stats.Gauge
 	keyArgs := make([]interface{}, len(values)+1)
@@ -110,7 +110,7 @@ func writeGauges(userId string, stats *StatsUpdate) (err error) {
 	// Roll up gauges to country and global level
 	for key, value := range values {
 		var oldValue int64
-		if oldValue, err = receive(conn); err != nil {
+		if oldValue, _, err = receive(conn); err != nil {
 			return
 		}
 		delta := value - oldValue

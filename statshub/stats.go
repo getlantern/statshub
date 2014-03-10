@@ -19,19 +19,20 @@ func newStats() (stats *Stats) {
 	}
 }
 
-func receive(conn redis.Conn) (val int64, err error) {
+func receive(conn redis.Conn) (val int64, found bool, err error) {
 	var ival interface{}
 	if ival, err = conn.Receive(); err != nil {
 		return
 	}
-	val, err = fromRedisVal(ival)
+	val, found, err = fromRedisVal(ival)
 	return
 }
 
-func fromRedisVal(redisVal interface{}) (val int64, err error) {
+func fromRedisVal(redisVal interface{}) (val int64, found bool, err error) {
 	if redisVal == nil {
-		val = 0
+		found = false
 	} else {
+		found = true
 		valString := string(redisVal.([]uint8))
 		var intVal int
 		intVal, err = strconv.Atoi(valString)
