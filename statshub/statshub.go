@@ -58,7 +58,7 @@ func init() {
 	http.HandleFunc("/stats/", statsHandler)
 }
 
-// statsPostHandler handles requests to /stats
+// statsHandler handles requests to /stats
 func statsHandler(w http.ResponseWriter, r *http.Request) {
 	var userId string
 	var err error
@@ -149,6 +149,7 @@ func getStats(r *http.Request, userId string) (statusCode int, resp interface{},
 	return 200, clientResp, nil
 }
 
+// extractUserId extracts the user id from the request url
 func extractUserId(r *http.Request) (userId string, err error) {
 	// Figure out the UserId
 	lastSlash := strings.LastIndex(r.URL.Path, "/")

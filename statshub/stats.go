@@ -12,6 +12,7 @@ type Stats struct {
 	Gauge   map[string]int64 `json:"gauge"`
 }
 
+// newStats constructs a Stats
 func newStats() (stats *Stats) {
 	return &Stats{
 		Counter: make(map[string]int64),
@@ -19,6 +20,7 @@ func newStats() (stats *Stats) {
 	}
 }
 
+// receive receives the next value from the redis.Conn's output buffer.
 func receive(conn redis.Conn) (val int64, found bool, err error) {
 	var ival interface{}
 	if ival, err = conn.Receive(); err != nil {
@@ -28,6 +30,8 @@ func receive(conn redis.Conn) (val int64, found bool, err error) {
 	return
 }
 
+// fromRedisVale converts a value received from redis into an int64.
+// If there was no value found in redis, found will equal false.
 func fromRedisVal(redisVal interface{}) (val int64, found bool, err error) {
 	if redisVal == nil {
 		found = false
@@ -45,10 +49,14 @@ func fromRedisVal(redisVal interface{}) (val int64, found bool, err error) {
 	return
 }
 
+// redisKey constructs a key for a stat from its type (e.g. counter),
+// group (e.g. country:es) and key (e.g. mystat).
 func redisKey(statType string, group string, key interface{}) string {
 	return fmt.Sprintf("%s:%s:%s", statType, group, key)
 }
 
+// listStatKeys lists all keys (e.g. mystat) for stats of the given type
+// (e.g. counter).
 func listStatKeys(conn redis.Conn, statType string) (keys []string, err error) {
 	var tmpKeys interface{}
 	if tmpKeys, err = conn.Do("SMEMBERS", fmt.Sprintf("key:%s", statType)); err != nil {
@@ -62,6 +70,8 @@ func listStatKeys(conn redis.Conn, statType string) (keys []string, err error) {
 	return
 }
 
+// listCountries lists all country codes for which a stat has been reported at
+// some point in the past.
 func listCountries(conn redis.Conn) (countries []string, err error) {
 	var icountries interface{}
 	if icountries, err = conn.Do("SMEMBERS", "countries"); err != nil {

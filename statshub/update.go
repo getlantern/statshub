@@ -7,12 +7,6 @@ import (
 	"time"
 )
 
-const (
-	// reportingPeriod is how frequently clients report stats
-	reportingPeriod = 5 * time.Minute
-	statsPeriod     = reportingPeriod + 1*time.Minute
-)
-
 // StatsUpdate posts stats from within a specific country.  Stats
 // include Counter (cumulative) and Gauges (point in time)
 // (online/offline).
@@ -35,6 +29,7 @@ func (stats *StatsUpdate) postToRedis(userId string) (err error) {
 	return
 }
 
+// writeCounters writes counter stats to redis
 func writeCounters(userId string, stats *StatsUpdate) (err error) {
 	var conn redis.Conn
 	if conn, err = connectToRedis(); err != nil {
@@ -68,6 +63,7 @@ func writeCounters(userId string, stats *StatsUpdate) (err error) {
 	return
 }
 
+// writeGauges writes gauge stats to redis
 func writeGauges(userId string, stats *StatsUpdate) (err error) {
 	var conn redis.Conn
 	if conn, err = connectToRedis(); err != nil {
@@ -129,6 +125,8 @@ func writeGauges(userId string, stats *StatsUpdate) (err error) {
 	return
 }
 
+// withLowerCaseKeys converts the keys in a map to lower case, returning a new
+// map with the lower cased keys.
 func withLowerCaseKeys(values map[string]uint64) (lowerCased map[string]uint64) {
 	lowerCased = make(map[string]uint64)
 	for key, value := range values {

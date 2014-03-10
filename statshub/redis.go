@@ -11,12 +11,20 @@ const (
 	redisConnectTimeout = 10 * time.Second
 	redisReadTimeout    = 10 * time.Second
 	redisWriteTimeout   = 10 * time.Second
+
+	// reportingPeriod is how frequently clients report stats
+	reportingPeriod = 5 * time.Minute
+	// statsPeriod controls the buckets in which we store aggregated stats,
+	// which are sized slightly larger than the reportingPeriod to accommodate
+	// timing differences.
+	statsPeriod = reportingPeriod + 1*time.Minute
 )
 
 var (
 	pool *redis.Pool
 )
 
+// init() initializes our redis environment by setting up a connection pool
 func init() {
 	pool = &redis.Pool{
 		MaxIdle:     100,
@@ -44,8 +52,9 @@ func init() {
 	}
 }
 
-// redisConn is a redis.Conn that stops processing new commands after it
-// encounters its first error.
+// redisConn is a wrapper for a redis.Conn that itself implements the
+// redis.Conn interface. Unlike a normal redis.Conn, redisConn stops processing
+// new commands after it encountersits first error.
 type redisConn struct {
 	orig redis.Conn
 	err  error

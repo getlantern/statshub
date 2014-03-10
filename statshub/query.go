@@ -13,6 +13,8 @@ type QueryResponse struct {
 	PerCountry map[string]*Stats `json:"perCountry"` // Maps country codes to stats for those countries
 }
 
+// query runs a query for a given userId, optionally including global and
+// country rollups depending on the value of includeRollups.
 func query(conn redis.Conn, userId string, includeRollups bool) (resp *QueryResponse, err error) {
 	resp = &QueryResponse{
 		User:       newStats(),
@@ -34,6 +36,7 @@ func query(conn redis.Conn, userId string, includeRollups bool) (resp *QueryResp
 	return
 }
 
+// queryCounters queries simple counter statistics
 func queryCounters(conn redis.Conn, countries []string, userId string, resp *QueryResponse, includeRollups bool) (err error) {
 	var counterKeys []string
 	if counterKeys, err = listStatKeys(conn, "counter"); err != nil {
@@ -85,6 +88,8 @@ func queryCounters(conn redis.Conn, countries []string, userId string, resp *Que
 	return
 }
 
+// queryGauges queries simple gauge statistics
+// TODO: this is a lot like queryCounters, might be nice to reduce the repetition
 func queryGauges(conn redis.Conn, countries []string, userId string, resp *QueryResponse, includeRollups bool) (err error) {
 	currentPeriod := time.Now().Truncate(statsPeriod)
 	priorPeriod := currentPeriod.Add(-1 * statsPeriod)
@@ -150,6 +155,7 @@ func queryGauges(conn redis.Conn, countries []string, userId string, resp *Query
 	return
 }
 
+// keyForPeriod constructs a redis key from a base key plus a given time period
 func keyForPeriod(key string, period time.Time) string {
 	return fmt.Sprintf("%s:%d", key, period.Unix())
 }

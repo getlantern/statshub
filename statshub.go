@@ -1,3 +1,4 @@
+// package main starts up a local statshub server
 package main
 
 import (
