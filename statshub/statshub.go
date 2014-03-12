@@ -114,12 +114,6 @@ func getStats(r *http.Request, userId string) (statusCode int, resp interface{},
 		Response: Response{Succeeded: true},
 	}
 
-	conn, err := connectToRedis()
-	if err != nil {
-		return 500, nil, fmt.Errorf("Unable to connect to redis: %s", err)
-	}
-	defer conn.Close()
-
 	var calculateRollups = false
 	cachedRollups := rollupCache.Get()
 	if cachedRollups == nil {
@@ -131,7 +125,7 @@ func getStats(r *http.Request, userId string) (statusCode int, resp interface{},
 	}
 
 	var queryResp *QueryResponse
-	if queryResp, err = query(conn, userId, calculateRollups); err != nil {
+	if queryResp, err = Query(userId, calculateRollups); err != nil {
 		return 500, nil, fmt.Errorf("Unable to query stats: %s", err)
 	}
 	clientResp.User = queryResp.User

@@ -20,6 +20,9 @@ Stats are always submitted for a particular userid and within a specific country
 Stats query results always include all counters and gauges for the user, as well as rollups globally and rollups for each country
 from which we've received stats in the past.
 
+statshub submits its stats to Google Big Query on an hourly basis.  It authenticates using OAuth and connects to a specific project,
+using the environment variables `GOOGLE_PROJECT` and `GOOGLE_TOKEN`.
+
 ### Example Session
 
 Here we are submitting and querying stats for the user 523523.
@@ -93,7 +96,7 @@ Pretty printed response data:
 ### Running Local Server
 
 ```bash
-REDIS_ADDR=<host:port> REDIS_PASS=<password> PORT=9000 go run statshub.go
+REDIS_ADDR=<host:port> REDIS_PASS=<password> GOOGLE_PROJECT=<project id> GOOGLE_TOKEN=<json encoded oauth config from oauther> PORT=9000 go run statshub.go
 ```
 
 ### Deploying to Heroku
@@ -103,6 +106,8 @@ Need to configure the Redis address and password only once (these are persistent
 ```bash
 heroku config:set REDIS_ADDR=<host:port>
 heroku config:set REDIS_PASS=mR0bKNfhlxoKIHqnBA53
+heroku config:set GOOGLE_PROJECT=<project id>
+heroku config:set OAUTH_CONFIG=<json encoded oauth config from oauther>
 ```
 
 To deploy:

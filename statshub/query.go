@@ -15,7 +15,15 @@ type QueryResponse struct {
 
 // query runs a query for a given userId, optionally including global and
 // country rollups depending on the value of includeRollups.
-func query(conn redis.Conn, userId string, includeRollups bool) (resp *QueryResponse, err error) {
+func Query(userId string, includeRollups bool) (resp *QueryResponse, err error) {
+	var conn redis.Conn
+	conn, err = connectToRedis()
+	if err != nil {
+		err = fmt.Errorf("Unable to connect to redis: %s", err)
+		return
+	}
+	defer conn.Close()
+
 	resp = &QueryResponse{
 		User:       newStats(),
 		Global:     newStats(),
