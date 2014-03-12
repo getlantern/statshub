@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"strconv"
+	"strings"
 )
 
 // Stats is a bundle of stats
@@ -50,9 +51,14 @@ func fromRedisVal(redisVal interface{}) (val int64, found bool, err error) {
 }
 
 // redisKey constructs a key for a stat from its type (e.g. counter),
-// group (e.g. country:es) and key (e.g. mystat).
+// group (e.g. country:es) and key (e.g. mystat).  Dashes are replaced
+// by underscores.
 func redisKey(statType string, group string, key interface{}) string {
-	return fmt.Sprintf("%s:%s:%s", statType, group, key)
+	return strings.Replace(
+		fmt.Sprintf("%s:%s:%s", statType, group, key),
+		"-",
+		"_",
+		-1)
 }
 
 // listStatKeys lists all keys (e.g. mystat) for stats of the given type
