@@ -28,10 +28,10 @@ using the environment variables `GOOGLE_PROJECT` and `GOOGLE_TOKEN`.
 Here we are submitting and querying stats for the id 523523.
 
 ```bash
-Macintosh% curl --data-binary '{"countryCode": "es", "counter": { "mystat": 1, "myotherstat": 50 }, "gauge": {"mygauge": 78, "online": 1}}' "http://localhost:9000/stats/523523"
-{"Succeeded":true,"Error":""}%                                                                                                              
-Macintosh% curl "http://localhost:9000/stats/523523"
-{"Succeeded":true,"Error":"","detail":{"counter":{"myotherstat":50,"mystat":1},"gauge":{"mygauge":78,"online":1}},"rollups":{"global":{"counter":{"myotherstat":50,"mystat":1},"gauge":{"mygauge":0,"online":0}},"perCountry":{"es":{"counter":{"myotherstat":50,"mystat":1},"gauge":{"mygauge":0,"online":0}}}}}%
+Macintosh% curl --data-binary '{"countryCode": "es", "counter": { "mystat": 1, "myotherstat": 50 }, "gauge": {"mygauge": 78, "online": 1}}' "https://pure-journey-3547.herokuapp.com/stats/523523"
+{"Succeeded":true,"Error":""}%
+Macintosh% curl https://pure-journey-3547.herokuapp.com/stats/523523
+{"Succeeded":true,"Error":"","detail":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":78,"online":1}},"rollups":{"global":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":0,"online":0}},"perCountry":{"es":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":0,"online":0}}}}}%
 ```
 
 Pretty printed request data:
@@ -56,38 +56,38 @@ Pretty printed response data:
 {
     "Error": "",
     "Succeeded": true,
-    "detail": {
-        "counter": {
-            "myotherstat": 50,
-            "mystat": 1
-        },
-        "gauge": {
-            "mygauge": 78,
-            "online": 1
-        }
-    },
     "rollups": {
         "global": {
             "counter": {
-                "myotherstat": 50,
-                "mystat": 1
+                "myotherstat": 1244600,
+                "mystat": 24892
             },
             "gauge": {
-                "mygauge": 0,
+                "mygauge": 39,
                 "online": 0
             }
         },
         "perCountry": {
             "es": {
                 "counter": {
-                    "myotherstat": 50,
-                    "mystat": 1
+                    "myotherstat": 1244600,
+                    "mystat": 24892
                 },
                 "gauge": {
-                    "mygauge": 0,
+                    "mygauge": 39,
                     "online": 0
                 }
             }
+        }
+    },
+    "detail": {
+        "counter": {
+            "myotherstat": 1244600,
+            "mystat": 24892
+        },
+        "gauge": {
+            "mygauge": 39,
+            "online": 0
         }
     }
 }
