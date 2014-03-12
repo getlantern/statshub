@@ -8,14 +8,14 @@ import (
 
 // QueryResponse is a Response to a StatsQuery
 type QueryResponse struct {
-	User       *Stats            `json:"user"`       // Stats for the user
+	Detail     *Stats            `json:"id"`         // Detailed stats
 	Global     *Stats            `json:"global"`     // Global stats
 	PerCountry map[string]*Stats `json:"perCountry"` // Maps country codes to stats for those countries
 }
 
-// query runs a query for a given userId, optionally including global and
+// query runs a query for a given id, optionally including global and
 // country rollups depending on the value of includeRollups.
-func Query(userId string, includeRollups bool) (resp *QueryResponse, err error) {
+func Query(id string, includeRollups bool) (resp *QueryResponse, err error) {
 	var conn redis.Conn
 	conn, err = connectToRedis()
 	if err != nil {
@@ -25,7 +25,7 @@ func Query(userId string, includeRollups bool) (resp *QueryResponse, err error) 
 	defer conn.Close()
 
 	resp = &QueryResponse{
-		User:       newStats(),
+		Detail:     newStats(),
 		Global:     newStats(),
 		PerCountry: make(map[string]*Stats),
 	}
@@ -35,26 +35,26 @@ func Query(userId string, includeRollups bool) (resp *QueryResponse, err error) 
 		return
 	}
 
-	if err = queryCounters(conn, countries, userId, resp, includeRollups); err != nil {
+	if err = queryCounters(conn, countries, id, resp, includeRollups); err != nil {
 		return
 	}
 
-	err = queryGauges(conn, countries, userId, resp, includeRollups)
+	err = queryGauges(conn, countries, id, resp, includeRollups)
 
 	return
 }
 
 // queryCounters queries simple counter statistics
-func queryCounters(conn redis.Conn, countries []string, userId string, resp *QueryResponse, includeRollups bool) (err error) {
+func queryCounters(conn redis.Conn, countries []string, id string, resp *QueryResponse, includeRollups bool) (err error) {
 	var counterKeys []string
 	if counterKeys, err = listStatKeys(conn, "counter"); err != nil {
 		return
 	}
 
 	for _, key := range counterKeys {
-		userKey := redisKey("counter", fmt.Sprintf("user:%s", userId), key)
+		detailKey := redisKey("counter", fmt.Sprintf("detail:%s", id), key)
 		globalKey := redisKey("counter", "global", key)
-		err = conn.Send("GET", userKey)
+		err = conn.Send("GET", detailKey)
 		if includeRollups {
 			err = conn.Send("GET", globalKey)
 			for _, countryCode := range countries {
@@ -71,7 +71,7 @@ func queryCounters(conn redis.Conn, countries []string, userId string, resp *Que
 		if val, _, err = receive(conn); err != nil {
 			return
 		}
-		resp.User.Counter[key] = val
+		resp.Detail.Counter[key] = val
 
 		if includeRollups {
 			if val, _, err = receive(conn); err != nil {
@@ -98,7 +98,7 @@ func queryCounters(conn redis.Conn, countries []string, userId string, resp *Que
 
 // queryGauges queries simple gauge statistics
 // TODO: this is a lot like queryCounters, might be nice to reduce the repetition
-func queryGauges(conn redis.Conn, countries []string, userId string, resp *QueryResponse, includeRollups bool) (err error) {
+func queryGauges(conn redis.Conn, countries []string, id string, resp *QueryResponse, includeRollups bool) (err error) {
 	currentPeriod := time.Now().Truncate(statsPeriod)
 	priorPeriod := currentPeriod.Add(-1 * statsPeriod)
 
@@ -108,11 +108,11 @@ func queryGauges(conn redis.Conn, countries []string, userId string, resp *Query
 	}
 
 	for _, key := range gaugeKeys {
-		userKey := redisKey("gauge", fmt.Sprintf("user:%s", userId), keyForPeriod(key, currentPeriod))
-		userKeyPrior := redisKey("gauge", fmt.Sprintf("user:%s", userId), keyForPeriod(key, priorPeriod))
+		detailKey := redisKey("gauge", fmt.Sprintf("detail:%s", id), keyForPeriod(key, currentPeriod))
+		detailKeyPrior := redisKey("gauge", fmt.Sprintf("detail:%s", id), keyForPeriod(key, priorPeriod))
 		globalKey := redisKey("gauge", "global", keyForPeriod(key, priorPeriod))
-		err = conn.Send("GET", userKey)
-		err = conn.Send("GET", userKeyPrior)
+		err = conn.Send("GET", detailKey)
+		err = conn.Send("GET", detailKeyPrior)
 
 		if includeRollups {
 			err = conn.Send("GET", globalKey)
@@ -135,9 +135,9 @@ func queryGauges(conn redis.Conn, countries []string, userId string, resp *Query
 			return
 		}
 		if currentValueFound {
-			resp.User.Gauge[key] = currentVal
+			resp.Detail.Gauge[key] = currentVal
 		} else {
-			resp.User.Gauge[key] = val
+			resp.Detail.Gauge[key] = val
 		}
 
 		if includeRollups {

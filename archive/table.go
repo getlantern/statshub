@@ -1,6 +1,9 @@
 package archive
 
 import (
+	// Note - I'm using a patched version of the google-api-go-client library
+	// because of this bug -
+	// https://code.google.com/p/google-api-go-client/issues/detail?id=52
 	bigquery "code.google.com/p/ox-google-api-go-client/bigquery/v2"
 	"github.com/getlantern/statshub/statshub"
 	"github.com/oxtoacart/oauther/oauth"

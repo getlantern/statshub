@@ -15,22 +15,22 @@ type StatsUpdate struct {
 	Stats
 }
 
-// postToRedis posts Counter and Gauge for the given userId to redis
+// postToRedis posts Counter and Gauge for the given id to redis
 // using INCRBY and SET respectively.
-func (stats *StatsUpdate) postToRedis(userId string) (err error) {
+func (stats *StatsUpdate) postToRedis(id string) (err error) {
 	// Always treat countries as lower case
 	stats.CountryCode = strings.ToLower(stats.CountryCode)
 
-	if err = writeCounters(userId, stats); err != nil {
+	if err = writeCounters(id, stats); err != nil {
 		return
 	}
-	err = writeGauges(userId, stats)
+	err = writeGauges(id, stats)
 
 	return
 }
 
 // writeCounters writes counter stats to redis
-func writeCounters(userId string, stats *StatsUpdate) (err error) {
+func writeCounters(id string, stats *StatsUpdate) (err error) {
 	var conn redis.Conn
 	if conn, err = connectToRedis(); err != nil {
 		return
@@ -45,10 +45,10 @@ func writeCounters(userId string, stats *StatsUpdate) (err error) {
 	for key, value := range values {
 		keyArgs[i] = key
 		i++
-		userKey := redisKey("counter", fmt.Sprintf("user:%s", userId), key)
+		detailKey := redisKey("counter", fmt.Sprintf("detail:%s", id), key)
 		countryKey := redisKey("counter", fmt.Sprintf("country:%s", stats.CountryCode), key)
 		globalKey := redisKey("counter", "global", key)
-		err = conn.Send("INCRBY", userKey, value)
+		err = conn.Send("INCRBY", detailKey, value)
 		err = conn.Send("INCRBY", countryKey, value)
 		err = conn.Send("INCRBY", globalKey, value)
 	}
@@ -64,7 +64,7 @@ func writeCounters(userId string, stats *StatsUpdate) (err error) {
 }
 
 // writeGauges writes gauge stats to redis
-func writeGauges(userId string, stats *StatsUpdate) (err error) {
+func writeGauges(id string, stats *StatsUpdate) (err error) {
 	var conn redis.Conn
 	if conn, err = connectToRedis(); err != nil {
 		return
@@ -84,11 +84,11 @@ func writeGauges(userId string, stats *StatsUpdate) (err error) {
 		return fmt.Sprintf("%s:%d", key, now.Unix())
 	}
 
-	// Set gauges at user level
+	// Set gauges at the detail level
 	for key, value := range values {
 		keyArgs[i] = key
 		i++
-		redisKey := redisKey("gauge", fmt.Sprintf("user:%s", userId), keyWithDate(key))
+		redisKey := redisKey("gauge", fmt.Sprintf("detail:%s", id), keyWithDate(key))
 		err = conn.Send("GETSET", redisKey, value)
 	}
 
@@ -97,7 +97,7 @@ func writeGauges(userId string, stats *StatsUpdate) (err error) {
 	// and we don't want to bother with interleaving those with the EXPIREAT
 	// return values.
 	for key, _ := range values {
-		redisKey := redisKey("gauge", fmt.Sprintf("user:%s", userId), keyWithDate(key))
+		redisKey := redisKey("gauge", fmt.Sprintf("detail:%s", id), keyWithDate(key))
 		err = conn.Send("EXPIREAT", redisKey, expiration.Unix())
 	}
 

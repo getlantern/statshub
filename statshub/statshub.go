@@ -1,7 +1,7 @@
 // package statshub implements functionality for submitting and querying stats
 // from a centralized stats server.
 //
-// Stats are always submitted on behalf of a specific user, who is identified by an anonymized integer userid.
+// Stats are always submitted on behalf of a specific id, which can be anything.
 //
 // To run a local server for testing:
 //
@@ -39,7 +39,7 @@ var (
 // ClientQueryResponse is a Response to a StatsQuery
 type ClientQueryResponse struct {
 	Response
-	User    *Stats           `json:"user"` // Stats for the user
+	Detail  *Stats           `json:"detail"` // Detailed stats
 	Rollups *json.RawMessage `json:"rollups"`
 }
 
@@ -60,16 +60,16 @@ func init() {
 
 // statsHandler handles requests to /stats
 func statsHandler(w http.ResponseWriter, r *http.Request) {
-	var userId string
+	var id string
 	var err error
-	if userId, err = extractUserId(r); err != nil {
+	if id, err = extractid(r); err != nil {
 		fail(w, 400, err)
 	}
 
 	if "POST" == r.Method {
 		w.Header().Set("Content-Type", "application/json")
 
-		statusCode, resp, err := postStats(r, userId)
+		statusCode, resp, err := postStats(r, id)
 		if err != nil {
 			fail(w, statusCode, err)
 		} else {
@@ -78,7 +78,7 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 	} else if "GET" == r.Method {
 		w.Header().Set("Content-Type", "application/json")
 
-		statusCode, resp, err := getStats(r, userId)
+		statusCode, resp, err := getStats(r, id)
 		if err != nil {
 			fail(w, statusCode, err)
 		} else {
@@ -91,7 +91,7 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // postStats handles a POST request to /stats
-func postStats(r *http.Request, userId string) (statusCode int, resp interface{}, err error) {
+func postStats(r *http.Request, id string) (statusCode int, resp interface{}, err error) {
 	decoder := json.NewDecoder(r.Body)
 	stats := &StatsUpdate{}
 	err = decoder.Decode(stats)
@@ -99,7 +99,7 @@ func postStats(r *http.Request, userId string) (statusCode int, resp interface{}
 		return 400, nil, fmt.Errorf("Unable to decode request: %s", err)
 	}
 
-	if err = stats.postToRedis(userId); err != nil {
+	if err = stats.postToRedis(id); err != nil {
 		formattedError := fmt.Errorf("Unable to post stats: %s", err)
 		log.Println(formattedError)
 		return 500, nil, formattedError
@@ -109,7 +109,7 @@ func postStats(r *http.Request, userId string) (statusCode int, resp interface{}
 }
 
 // getStats handles a GET request to /stats
-func getStats(r *http.Request, userId string) (statusCode int, resp interface{}, err error) {
+func getStats(r *http.Request, id string) (statusCode int, resp interface{}, err error) {
 	clientResp := &ClientQueryResponse{
 		Response: Response{Succeeded: true},
 	}
@@ -125,10 +125,10 @@ func getStats(r *http.Request, userId string) (statusCode int, resp interface{},
 	}
 
 	var queryResp *QueryResponse
-	if queryResp, err = Query(userId, calculateRollups); err != nil {
+	if queryResp, err = Query(id, calculateRollups); err != nil {
 		return 500, nil, fmt.Errorf("Unable to query stats: %s", err)
 	}
-	clientResp.User = queryResp.User
+	clientResp.Detail = queryResp.Detail
 	if calculateRollups {
 		rollups := &CachedRollups{
 			Global:     queryResp.Global,
@@ -143,14 +143,19 @@ func getStats(r *http.Request, userId string) (statusCode int, resp interface{},
 	return 200, clientResp, nil
 }
 
-// extractUserId extracts the user id from the request url
-func extractUserId(r *http.Request) (userId string, err error) {
-	// Figure out the UserId
+// extractid extracts the id from the request url
+func extractid(r *http.Request) (id string, err error) {
+	// Figure out the id
 	lastSlash := strings.LastIndex(r.URL.Path, "/")
 	if lastSlash == 0 {
-		return "", fmt.Errorf("Request URL is missing user id")
+		id = ""
+	} else {
+		id = r.URL.Path[lastSlash+1:]
 	}
-	return r.URL.Path[lastSlash+1:], nil
+	if id == "" {
+		id = "unknown"
+	}
+	return
 }
 
 func fail(w http.ResponseWriter, statusCode int, err error) {

@@ -11,13 +11,13 @@ There are two types of supported stats:
 
 Counters - these keep incrementing forever (e.g. an odometer)
 
-Gauges - these track an absolute value that can change over time (a speedometer).  Statshub assumes that gauges are reported every 5 minutes.  It stores them in 6 minute buckets.  For user-level gauges, the most recent reported value is given.  For aggregate gauges, the reported values reflect the prior 6 minute bucket, thus they can be up to 6 minutes out of date.
+Gauges - these track an absolute value that can change over time (a speedometer).  Statshub assumes that gauges are reported every 5 minutes.  It stores them in 6 minute buckets.  For detail-level gauges, the most recent reported value is given.  For aggregate gauges, the reported values reflect the prior 6 minute bucket, thus they can be up to 6 minutes out of date.
 
 Stats are identified by a string key, which is always normalized to lowercase.
 
-Stats are always submitted for a particular userid and within a specific country code.  Stat submissions can include any number of counters and gauges.
+Stats are always submitted for a particular id and within a specific country code.  Stat submissions can include any number of counters and gauges.
 
-Stats query results always include all counters and gauges for the user, as well as rollups globally and rollups for each country
+Stats query results always include all counters and gauges at the detail level, as well as rollups globally and rollups for each country
 from which we've received stats in the past.
 
 statshub submits its stats to Google Big Query on an hourly basis.  It authenticates using OAuth and connects to a specific project,
@@ -25,13 +25,13 @@ using the environment variables `GOOGLE_PROJECT` and `GOOGLE_TOKEN`.
 
 ### Example Session
 
-Here we are submitting and querying stats for the user 523523.
+Here we are submitting and querying stats for the id 523523.
 
 ```bash
 Macintosh% curl --data-binary '{"countryCode": "es", "counter": { "mystat": 1, "myotherstat": 50 }, "gauge": {"mygauge": 78, "online": 1}}' "https://pure-journey-3547.herokuapp.com/stats/523523"
 {"Succeeded":true,"Error":""}%
 Macintosh% curl https://pure-journey-3547.herokuapp.com/stats/523523
-{"Succeeded":true,"Error":"","user":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":78,"online":1}},"rollups":{"global":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":0,"online":0}},"perCountry":{"es":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":0,"online":0}}}}}%
+{"Succeeded":true,"Error":"","detail":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":78,"online":1}},"rollups":{"global":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":0,"online":0}},"perCountry":{"es":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":0,"online":0}}}}}%
 ```
 
 Pretty printed request data:
@@ -80,7 +80,7 @@ Pretty printed response data:
             }
         }
     },
-    "user": {
+    "detail": {
         "counter": {
             "myotherstat": 1244600,
             "mystat": 24892
