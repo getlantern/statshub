@@ -3,8 +3,31 @@
 	"GoVersion": "go1.2",
 	"Deps": [
 		{
+			"ImportPath": "code.google.com/p/goauth2/oauth",
+			"Comment": "weekly-43",
+			"Rev": "d4571a95014ff1fdd0055dc0f6b7e977a42b1e5a"
+		},
+		{
+			"ImportPath": "code.google.com/p/ox-google-api-go-client/bigquery/v2",
+			"Comment": "release-72",
+			"Rev": "2326e4be31075a609ac16aabf798a092b419d6db"
+		},
+		{
+			"ImportPath": "code.google.com/p/ox-google-api-go-client/googleapi",
+			"Comment": "release-72",
+			"Rev": "2326e4be31075a609ac16aabf798a092b419d6db"
+		},
+		{
 			"ImportPath": "github.com/garyburd/redigo/redis",
 			"Rev": "a470367e65a4a6986739b387f0e0aaa034d55466"
+		},
+		{
+			"ImportPath": "github.com/oxtoacart/oauther/oauth",
+			"Rev": "564b7afa2c0767ba84345a2d3540f274c890993f"
+		},
+		{
+			"ImportPath": "github.com/oxtoacart/webbrowser",
+			"Rev": "e11139f20bc7d3854f514b420c1a08eab0737ae6"
 		}
 	]
 }
