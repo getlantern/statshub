@@ -9,8 +9,9 @@ import (
 
 // Stats is a bundle of stats
 type Stats struct {
-	Counter map[string]int64 `json:"counter"`
-	Gauge   map[string]int64 `json:"gauge"`
+	Counter   map[string]int64 `json:"counter"`
+	Increment map[string]int64 `json:"increment,omitempty"`
+	Gauge     map[string]int64 `json:"gauge"`
 }
 
 // newStats constructs a Stats

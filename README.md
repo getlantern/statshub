@@ -28,10 +28,43 @@ using the environment variables `GOOGLE_PROJECT` and `GOOGLE_TOKEN`.
 Here we are submitting and querying stats for the id 523523.
 
 ```bash
-Macintosh% curl --data-binary '{"countryCode": "es", "counter": { "mystat": 1, "myotherstat": 50 }, "gauge": {"mygauge": 78, "online": 1}}' "https://pure-journey-3547.herokuapp.com/stats/523523"
-{"Succeeded":true,"Error":""}%
-Macintosh% curl https://pure-journey-3547.herokuapp.com/stats/523523
-{"Succeeded":true,"Error":"","detail":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":78,"online":1}},"rollups":{"global":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":0,"online":0}},"perCountry":{"es":{"counter":{"myotherstat":1244600,"mystat":24892},"gauge":{"mygauge":0,"online":0}}}}}%
+Macintosh% curl --data-binary '{"countryCode": "es", "counter": { "counter1": 5 }}' "http://localhost:9000/stats/myid"{"Succeeded":true,"Error":""}%                                                                                                                              
+
+Macintosh% curl "http://localhost:9000/stats/myid"                                                                    
+{"Succeeded":true,"Error":"","detail":{"counter":{"counter1":5},"gauge":{"everOnline":0}},"rollups":{"global":{"counter":{"counter1":5},"gauge":{"everOnline":0}},"perCountry":{"es":{"counter":{"counter1":5},"gauge":{"everOnline":0}}}}}%                                      
+
+Macintosh% curl --data-binary '{"countryCode": "es", "counter": { "counter1": 7 }}' "http://localhost:9000/stats/myid"{"Succeeded":true,"Error":""}%                                                                                                                              
+
+Macintosh% curl "http://localhost:9000/stats/myid"                                                                    
+{"Succeeded":true,"Error":"","detail":{"counter":{"counter1":7},"gauge":{"everOnline":0}},"rollups":{"global":{"counter":{"counter1":5},"gauge":{"everOnline":0}},"perCountry":{"es":{"counter":{"counter1":5},"gauge":{"everOnline":0}}}}}%                                      
+
+Macintosh% curl --data-binary '{"countryCode": "es", "increment": { "counter1": 9 }}' "http://localhost:9000/stats/myid"
+{"Succeeded":true,"Error":""}%                                                                                                           
+
+Macintosh% curl "http://localhost:9000/stats/myid"                                                                      
+{"Succeeded":true,"Error":"","detail":{"counter":{"counter1":16},"gauge":{"everOnline":0}},"rollups":{"global":{"counter":{"counter1":5},"gauge":{"everOnline":0}},"perCountry":{"es":{"counter":{"counter1":5},"gauge":{"everOnline":0}}}}}%                                     
+
+Macintosh% curl --data-binary '{"countryCode": "de", "increment": { "counter1": 10 }}' "http://localhost:9000/stats/myid"
+{"Succeeded":true,"Error":""}%                                                                                                                                                                              
+Macintosh% curl "http://localhost:9000/stats/myid"                                                                       
+{"Succeeded":true,"Error":"","detail":{"counter":{"counter1":26},"gauge":{"everOnline":0}},"rollups":{"global":{"counter":{"counter1":26},"gauge":{"everOnline":0}},"perCountry":{"de":{"counter":{"counter1":10},"gauge":{"everOnline":0}},"es":{"counter":{"counter1":16},"gauge":{"everOnline":0}}}}}%                                                                                                               
+Macintosh% curl --data-binary '{"countryCode": "de", "increment": { "counter2": 15 }}' "http://localhost:9000/stats/myid"
+{"Succeeded":true,"Error":""}%                                                                                                                                                                              
+Macintosh% curl "http://localhost:9000/stats/myid"                                                                       
+{"Succeeded":true,"Error":"","detail":{"counter":{"counter1":26,"counter2":15},"gauge":{"everOnline":0}},"rollups":{"global":{"counter":{"counter1":26},"gauge":{"everOnline":0}},"perCountry":{"de":{"counter":{"counter1":10},"gauge":{"everOnline":0}},"es":{"counter":{"counter1":16},"gauge":{"everOnline":0}}}}}%                                                                                                 
+Macintosh% curl --data-binary '{"countryCode": "es", "gauge": { "online": 1 }}' "http://localhost:9000/stats/myid"      
+{"Succeeded":true,"Error":""}%                                                                                                                                                                              
+Macintosh% date
+Thu Mar 13 16:18:16 CDT 2014
+
+Macintosh% curl "http://localhost:9000/stats/myid"
+{"Succeeded":true,"Error":"","detail":{"counter":{"counter1":26,"counter2":15},"gauge":{"everOnline":1,"online":1}},"rollups":{"global":{"counter":{"counter1":26,"counter2":15},"gauge":{"everOnline":1,"online":0}},"perCountry":{"de":{"counter":{"counter1":10,"counter2":15},"gauge":{"everOnline":0,"online":0}},"es":{"counter":{"counter1":16,"counter2":0},"gauge":{"everOnline":1,"online":0}}}}}%            
+
+Macintosh% date    
+Thu Mar 13 16:23:56 CDT 2014
+
+Macintosh% curl "http://localhost:9000/stats/myid"
+{"Succeeded":true,"Error":"","detail":{"counter":{"counter1":26,"counter2":15},"gauge":{"everOnline":1,"online":1}},"rollups":{"global":{"counter":{"counter1":26,"counter2":15},"gauge":{"everOnline":1,"online":1}},"perCountry":{"de":{"counter":{"counter1":10,"counter2":15},"gauge":{"everOnline":0,"online":0}},"es":{"counter":{"counter1":16,"counter2":0},"gauge":{"everOnline":1,"online":1}}}}}%            
 ```
 
 Pretty printed request data:

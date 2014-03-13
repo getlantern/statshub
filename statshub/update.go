@@ -21,23 +21,26 @@ func (stats *StatsUpdate) postToRedis(id string) (err error) {
 	// Always treat countries as lower case
 	stats.CountryCode = strings.ToLower(stats.CountryCode)
 
-	if err = writeCounters(id, stats); err != nil {
+	if err = writeIncrement(id, stats); err != nil {
 		return
 	}
-	err = writeGauges(id, stats)
+	if err = writeToRedis("counter", id, stats.CountryCode, stats.Counter); err != nil {
+		return
+	}
+	err = writeToRedis("gauge", id, stats.CountryCode, stats.Gauge)
 
 	return
 }
 
-// writeCounters writes counter stats to redis
-func writeCounters(id string, stats *StatsUpdate) (err error) {
+// writeIncrement increments counters in redis
+func writeIncrement(id string, stats *StatsUpdate) (err error) {
 	var conn redis.Conn
 	if conn, err = connectToRedis(); err != nil {
 		return
 	}
 	defer conn.Close()
 
-	values := stats.Counter
+	values := stats.Increment
 	keyArgs := make([]interface{}, len(values)+1)
 	keyArgs[0] = "key:counter"
 	i := 1
@@ -63,8 +66,12 @@ func writeCounters(id string, stats *StatsUpdate) (err error) {
 	return
 }
 
-// writeGauges writes gauge stats to redis
-func writeGauges(id string, stats *StatsUpdate) (err error) {
+// writeToRedis writes values (counters or gauges) to redis
+func writeToRedis(
+	statType string,
+	id string,
+	countryCode string,
+	values map[string]int64) (err error) {
 	var conn redis.Conn
 	if conn, err = connectToRedis(); err != nil {
 		return
@@ -75,20 +82,24 @@ func writeGauges(id string, stats *StatsUpdate) (err error) {
 	now = now.Truncate(statsPeriod)
 	expiration := now.Add(3 * statsPeriod)
 
-	values := stats.Gauge
 	keyArgs := make([]interface{}, len(values)+1)
-	keyArgs[0] = "key:gauge"
+	keyArgs[0] = "key:" + statType
 	i := 1
 
-	keyWithDate := func(key string) string {
-		return fmt.Sprintf("%s:%d", key, now.Unix())
+	qualifiedKey := func(key string) string {
+		if statType == "gauge" {
+			// For gauges, qualify the key with a date
+			return fmt.Sprintf("%s:%d", key, now.Unix())
+		} else {
+			return key
+		}
 	}
 
-	// Set gauges at the detail level
+	// Set details
 	for key, value := range values {
 		keyArgs[i] = key
 		i++
-		redisKey := redisKey("gauge", fmt.Sprintf("detail:%s", id), keyWithDate(key))
+		redisKey := redisKey(statType, fmt.Sprintf("detail:%s", id), qualifiedKey(key))
 		err = conn.Send("GETSET", redisKey, value)
 	}
 
@@ -97,38 +108,38 @@ func writeGauges(id string, stats *StatsUpdate) (err error) {
 	// and we don't want to bother with interleaving those with the EXPIREAT
 	// return values.
 	for key, _ := range values {
-		redisKey := redisKey("gauge", fmt.Sprintf("detail:%s", id), keyWithDate(key))
+		redisKey := redisKey(statType, fmt.Sprintf("detail:%s", id), qualifiedKey(key))
 		err = conn.Send("EXPIREAT", redisKey, expiration.Unix())
 	}
 
 	err = conn.Flush()
 
-	// Roll up gauges to country and global level
+	// Roll up to country and global level
 	for key, value := range values {
 		var oldValue int64
 		if oldValue, _, err = receive(conn); err != nil {
 			return
 		}
 		delta := value - oldValue
-		countryKey := redisKey("gauge", fmt.Sprintf("country:%s", stats.CountryCode), keyWithDate(key))
-		globalKey := redisKey("gauge", "global", keyWithDate(key))
+		countryKey := redisKey(statType, fmt.Sprintf("country:%s", countryCode), qualifiedKey(key))
+		globalKey := redisKey(statType, "global", qualifiedKey(key))
 		err = conn.Send("INCRBY", countryKey, delta)
 		err = conn.Send("EXPIREAT", countryKey, expiration.Unix())
 		err = conn.Send("INCRBY", globalKey, delta)
 		err = conn.Send("EXPIREAT", globalKey, expiration.Unix())
 
 		// Special treatment for "everOnline" gauge on non-fallbacks
-		if key == "online" && value == 1 && strings.Index(id, "fp-") != 0 {
-			everOnlineKey := redisKey("gauge", fmt.Sprintf("detail:%s", id), "everOnline")
-			countryEverOnlineKey := redisKey("gauge", fmt.Sprintf("country:%s", stats.CountryCode), "everOnline")
-			globalEverOnlineKey := redisKey("gauge", "global", "everOnline")
+		if statType == statType && key == "online" && value == 1 && strings.Index(id, "fp-") != 0 {
+			everOnlineKey := redisKey(statType, fmt.Sprintf("detail:%s", id), "everOnline")
+			countryEverOnlineKey := redisKey(statType, fmt.Sprintf("country:%s", countryCode), "everOnline")
+			globalEverOnlineKey := redisKey(statType, "global", "everOnline")
 			conn.Send("SET", everOnlineKey, 1)
 			conn.Send("SADD", countryEverOnlineKey, id)
 			conn.Send("SADD", globalEverOnlineKey, id)
 		}
 	}
 
-	// Remember gauge keys
+	// Remember keys
 	err = conn.Send("SADD", keyArgs...)
 
 	err = conn.Flush()
