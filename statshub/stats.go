@@ -38,13 +38,20 @@ func fromRedisVal(redisVal interface{}) (val int64, found bool, err error) {
 		found = false
 	} else {
 		found = true
-		valString := string(redisVal.([]uint8))
-		var intVal int
-		intVal, err = strconv.Atoi(valString)
-		if err != nil {
-			return
-		} else {
-			val = int64(intVal)
+		switch v := redisVal.(type) {
+		case []uint8:
+			valString := string(v)
+			var intVal int
+			intVal, err = strconv.Atoi(valString)
+			if err != nil {
+				return
+			} else {
+				val = int64(intVal)
+			}
+		case int64:
+			val = v
+		default:
+			err = fmt.Errorf("Value of unknown type returned from redis: %s", v)
 		}
 	}
 	return

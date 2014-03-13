@@ -117,12 +117,12 @@ func writeGauges(id string, stats *StatsUpdate) (err error) {
 		err = conn.Send("INCRBY", globalKey, delta)
 		err = conn.Send("EXPIREAT", globalKey, expiration.Unix())
 
-		// Special treatment for "online" gauge on non-fallbacks
+		// Special treatment for "everOnline" gauge on non-fallbacks
 		if key == "online" && value == 1 && strings.Index(id, "fp-") != 0 {
 			everOnlineKey := redisKey("gauge", fmt.Sprintf("detail:%s", id), "everOnline")
 			countryEverOnlineKey := redisKey("gauge", fmt.Sprintf("country:%s", stats.CountryCode), "everOnline")
 			globalEverOnlineKey := redisKey("gauge", "global", "everOnline")
-			conn.Send("SADD", everOnlineKey, id)
+			conn.Send("SET", everOnlineKey, 1)
 			conn.Send("SADD", countryEverOnlineKey, id)
 			conn.Send("SADD", globalEverOnlineKey, id)
 		}

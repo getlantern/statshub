@@ -123,6 +123,18 @@ func queryGauges(conn redis.Conn, countries []string, id string, resp *QueryResp
 		}
 	}
 
+	// Special treatment for "everOnline" gauge on non-fallbacks
+	everOnlineKey := redisKey("gauge", fmt.Sprintf("detail:%s", id), "everOnline")
+	globalEverOnlineKey := redisKey("gauge", "global", "everOnline")
+	conn.Send("GET", everOnlineKey)
+	if includeRollups {
+		conn.Send("SCARD", globalEverOnlineKey)
+		for _, countryCode := range countries {
+			countryEverOnlineKey := redisKey("gauge", fmt.Sprintf("country:%s", countryCode), "everOnline")
+			err = conn.Send("SCARD", countryEverOnlineKey)
+		}
+	}
+
 	err = conn.Flush()
 
 	for _, key := range gaugeKeys {
@@ -157,6 +169,25 @@ func queryGauges(conn redis.Conn, countries []string, id string, resp *QueryResp
 				}
 				countryStats.Gauge[key] = val
 			}
+		}
+	}
+
+	// Special treatment for "everOnline" gauge on non-fallbacks
+	var everOnline int64
+	if everOnline, _, err = receive(conn); err != nil {
+		return
+	}
+	resp.Detail.Gauge["everOnline"] = everOnline
+	if includeRollups {
+		if everOnline, _, err = receive(conn); err != nil {
+			return
+		}
+		resp.Global.Gauge["everOnline"] = everOnline
+		for _, countryCode := range countries {
+			if everOnline, _, err = receive(conn); err != nil {
+				return
+			}
+			resp.PerCountry[countryCode].Gauge["everOnline"] = everOnline
 		}
 	}
 
