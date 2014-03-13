@@ -17,6 +17,12 @@ Stats are identified by a string key, which is always normalized to lowercase.
 
 Stats are always submitted for a particular id and within a specific country code.  Stat submissions can include any number of counters and gauges.
 
+There are two ways to modify counters.
+
+# Use Stats.Counter - this sets the value of the counter to the specified value.
+
+# Use Stats.Increment - this increments the value of the counter by the specified amount.
+
 Stats query results always include all counters and gauges at the detail level, as well as rollups globally and rollups for each country
 from which we've received stats in the past.
 
