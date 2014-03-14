@@ -9,16 +9,16 @@ import (
 
 // Stats is a bundle of stats
 type Stats struct {
-	Counter   map[string]int64 `json:"counter"`
-	Increment map[string]int64 `json:"increment,omitempty"`
-	Gauge     map[string]int64 `json:"gauge"`
+	Counters   map[string]int64 `json:"counters,omitempty"`
+	Increments map[string]int64 `json:"increments,omitempty"`
+	Gauges     map[string]int64 `json:"gauges,omitempty"`
 }
 
 // newStats constructs a Stats
 func newStats() (stats *Stats) {
 	return &Stats{
-		Counter: make(map[string]int64),
-		Gauge:   make(map[string]int64),
+		Counters: make(map[string]int64),
+		Gauges:   make(map[string]int64),
 	}
 }
 
@@ -84,17 +84,16 @@ func listStatKeys(conn redis.Conn, statType string) (keys []string, err error) {
 	return
 }
 
-// listCountries lists all country codes for which a stat has been reported at
-// some point in the past.
-func listCountries(conn redis.Conn) (countries []string, err error) {
-	var icountries interface{}
-	if icountries, err = conn.Do("SMEMBERS", "countries"); err != nil {
+// listDimKeys lists all keys of the given dimension.
+func listDimKeys(conn redis.Conn, name string) (values []string, err error) {
+	var ivalues interface{}
+	if ivalues, err = conn.Do("SMEMBERS", "dim:"+name); err != nil {
 		return
 	}
-	iacountries := icountries.([]interface{})
-	countries = make([]string, len(iacountries))
-	for i, country := range iacountries {
-		countries[i] = string(country.([]uint8))
+	iavalues := ivalues.([]interface{})
+	values = make([]string, len(iavalues))
+	for i, value := range iavalues {
+		values[i] = string(value.([]uint8))
 	}
 	return
 }

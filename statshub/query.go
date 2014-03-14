@@ -6,16 +6,8 @@ import (
 	"time"
 )
 
-// QueryResponse is a Response to a StatsQuery
-type QueryResponse struct {
-	Detail     *Stats            `json:"id"`         // Detailed stats
-	Global     *Stats            `json:"global"`     // Global stats
-	PerCountry map[string]*Stats `json:"perCountry"` // Maps country codes to stats for those countries
-}
-
-// query runs a query for a given id, optionally including global and
-// country rollups depending on the value of includeRollups.
-func Query(id string, includeRollups bool) (resp *QueryResponse, err error) {
+// QueryDims runs a query for values from the requested dimensions
+func QueryDims(dimNames []string) (statsByDim map[string]map[string]*Stats, err error) {
 	var conn redis.Conn
 	conn, err = connectToRedis()
 	if err != nil {
@@ -24,71 +16,73 @@ func Query(id string, includeRollups bool) (resp *QueryResponse, err error) {
 	}
 	defer conn.Close()
 
-	resp = &QueryResponse{
-		Detail:     newStats(),
-		Global:     newStats(),
-		PerCountry: make(map[string]*Stats),
+	statsByDim = make(map[string]map[string]*Stats)
+	// statsByDim["auto"] = make(map[string]*Stats)
+	// statsByDim["total"] = newStats()
+	for _, dimName := range dimNames {
+		dimStats := make(map[string]*Stats)
+		var dimKeys []string
+		if dimKeys, err = listDimKeys(conn, dimName); err != nil {
+			return nil, fmt.Errorf("Unable to list keys for dimension: %s", dimName)
+		}
+		for _, dimKey := range dimKeys {
+			dimStats[dimKey] = newStats()
+		}
+
+		statsByDim[dimName] = dimStats
 	}
 
-	var countries []string
-	if countries, err = listCountries(conn); err != nil {
+	if err = queryCounters(conn, statsByDim); err != nil {
 		return
 	}
 
-	if err = queryCounters(conn, countries, id, resp, includeRollups); err != nil {
-		return
-	}
-
-	err = queryGauges(conn, countries, id, resp, includeRollups)
+	err = queryGauges(conn, statsByDim)
 
 	return
 }
 
 // queryCounters queries simple counter statistics
-func queryCounters(conn redis.Conn, countries []string, id string, resp *QueryResponse, includeRollups bool) (err error) {
+func queryCounters(conn redis.Conn, statsByDim map[string]map[string]*Stats) (err error) {
 	var counterKeys []string
 	if counterKeys, err = listStatKeys(conn, "counter"); err != nil {
 		return
 	}
 
-	for _, key := range counterKeys {
-		detailKey := redisKey("counter", fmt.Sprintf("detail:%s", id), key)
-		globalKey := redisKey("counter", "global", key)
-		err = conn.Send("GET", detailKey)
-		if includeRollups {
-			err = conn.Send("GET", globalKey)
-			for _, countryCode := range countries {
-				countryKey := redisKey("counter", fmt.Sprintf("country:%s", countryCode), key)
-				err = conn.Send("GET", countryKey)
+	// dimNames and dimKeys are needed for consistent iteration order on statsByDim
+	dimNames := make([]string, len(statsByDim))
+	dimKeys := make(map[string][]string)
+
+	i := 0
+	for dimName, dimStats := range statsByDim {
+		dimNames[i] = dimName
+		keysForDim := make([]string, len(dimStats))
+		j := 0
+		for dimKey, _ := range dimStats {
+			keysForDim[j] = dimKey
+			for _, key := range counterKeys {
+				fullDimKey := redisKey("counter", fmt.Sprintf("dim:%s:%s", dimName, dimKey), key)
+				err = conn.Send("GET", fullDimKey)
 			}
+			j++
 		}
+		dimKeys[dimName] = keysForDim
+		i++
 	}
 
 	err = conn.Flush()
 
-	for _, key := range counterKeys {
-		var val int64
-		if val, _, err = receive(conn); err != nil {
-			return
-		}
-		resp.Detail.Counter[key] = val
-
-		if includeRollups {
-			if val, _, err = receive(conn); err != nil {
-				return
-			}
-			resp.Global.Counter[key] = val
-
-			for _, countryCode := range countries {
-				if val, _, err = receive(conn); err != nil {
+	var val int64
+	for _, dimName := range dimNames {
+		dimStats := statsByDim[dimName]
+		for _, dimKey := range dimKeys[dimName] {
+			for _, key := range counterKeys {
+				var found bool
+				if val, found, err = receive(conn); err != nil {
 					return
 				}
-				countryStats := resp.PerCountry[countryCode]
-				if countryStats == nil {
-					countryStats = newStats()
-					resp.PerCountry[countryCode] = countryStats
+				if found {
+					dimStats[dimKey].Counters[key] = val
 				}
-				countryStats.Counter[key] = val
 			}
 		}
 	}
@@ -98,7 +92,7 @@ func queryCounters(conn redis.Conn, countries []string, id string, resp *QueryRe
 
 // queryGauges queries simple gauge statistics
 // TODO: this is a lot like queryCounters, might be nice to reduce the repetition
-func queryGauges(conn redis.Conn, countries []string, id string, resp *QueryResponse, includeRollups bool) (err error) {
+func queryGauges(conn redis.Conn, statsByDim map[string]map[string]*Stats) (err error) {
 	currentPeriod := time.Now().Truncate(statsPeriod)
 	priorPeriod := currentPeriod.Add(-1 * statsPeriod)
 
@@ -107,87 +101,42 @@ func queryGauges(conn redis.Conn, countries []string, id string, resp *QueryResp
 		return
 	}
 
-	for _, key := range gaugeKeys {
-		detailKey := redisKey("gauge", fmt.Sprintf("detail:%s", id), keyForPeriod(key, currentPeriod))
-		detailKeyPrior := redisKey("gauge", fmt.Sprintf("detail:%s", id), keyForPeriod(key, priorPeriod))
-		globalKey := redisKey("gauge", "global", keyForPeriod(key, priorPeriod))
-		err = conn.Send("GET", detailKey)
-		err = conn.Send("GET", detailKeyPrior)
+	// dimNames and dimKeys are needed for consistent iteration order on statsByDim
+	dimNames := make([]string, len(statsByDim))
+	dimKeys := make(map[string][]string)
 
-		if includeRollups {
-			err = conn.Send("GET", globalKey)
-			for _, countryCode := range countries {
-				countryKey := redisKey("gauge", fmt.Sprintf("country:%s", countryCode), keyForPeriod(key, priorPeriod))
-				err = conn.Send("GET", countryKey)
+	i := 0
+	for dimName, dimStats := range statsByDim {
+		dimNames[i] = dimName
+		keysForDim := make([]string, len(dimStats))
+		j := 0
+		for dimKey, _ := range dimStats {
+			keysForDim[j] = dimKey
+			for _, key := range gaugeKeys {
+				fullDimKey := redisKey("gauge", fmt.Sprintf("dim:%s:%s", dimName, dimKey), keyForPeriod(key, priorPeriod))
+				err = conn.Send("GET", fullDimKey)
 			}
+			j++
 		}
-	}
-
-	// Special treatment for "everOnline" gauge on non-fallbacks
-	everOnlineKey := redisKey("gauge", fmt.Sprintf("detail:%s", id), "everOnline")
-	globalEverOnlineKey := redisKey("gauge", "global", "everOnline")
-	conn.Send("GET", everOnlineKey)
-	if includeRollups {
-		conn.Send("SCARD", globalEverOnlineKey)
-		for _, countryCode := range countries {
-			countryEverOnlineKey := redisKey("gauge", fmt.Sprintf("country:%s", countryCode), "everOnline")
-			err = conn.Send("SCARD", countryEverOnlineKey)
-		}
+		dimKeys[dimName] = keysForDim
+		i++
 	}
 
 	err = conn.Flush()
 
-	for _, key := range gaugeKeys {
-		var val, currentVal int64
-		currentValueFound := false
-		if currentVal, currentValueFound, err = receive(conn); err != nil {
-			return
-		}
-		if val, _, err = receive(conn); err != nil {
-			return
-		}
-		if currentValueFound {
-			resp.Detail.Gauge[key] = currentVal
-		} else {
-			resp.Detail.Gauge[key] = val
-		}
-
-		if includeRollups {
-			if val, _, err = receive(conn); err != nil {
-				return
-			}
-			resp.Global.Gauge[key] = val
-
-			for _, countryCode := range countries {
-				if val, _, err = receive(conn); err != nil {
+	var val int64
+	for _, dimName := range dimNames {
+		dimStats := statsByDim[dimName]
+		for _, dimKey := range dimKeys[dimName] {
+			for _, key := range gaugeKeys {
+				var found bool
+				if val, found, err = receive(conn); err != nil {
 					return
 				}
-				countryStats := resp.PerCountry[countryCode]
-				if countryStats == nil {
-					countryStats = newStats()
-					resp.PerCountry[countryCode] = countryStats
+				if found {
+					dimStats[dimKey].Gauges[key] = val
 				}
-				countryStats.Gauge[key] = val
 			}
-		}
-	}
-
-	// Special treatment for "everOnline" gauge on non-fallbacks
-	var everOnline int64
-	if everOnline, _, err = receive(conn); err != nil {
-		return
-	}
-	resp.Detail.Gauge["everOnline"] = everOnline
-	if includeRollups {
-		if everOnline, _, err = receive(conn); err != nil {
-			return
-		}
-		resp.Global.Gauge["everOnline"] = everOnline
-		for _, countryCode := range countries {
-			if everOnline, _, err = receive(conn); err != nil {
-				return
-			}
-			resp.PerCountry[countryCode].Gauge["everOnline"] = everOnline
 		}
 	}
 

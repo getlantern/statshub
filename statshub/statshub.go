@@ -39,8 +39,7 @@ var (
 // ClientQueryResponse is a Response to a StatsQuery
 type ClientQueryResponse struct {
 	Response
-	Detail  *Stats           `json:"detail"` // Detailed stats
-	Rollups *json.RawMessage `json:"rollups"`
+	Dims map[string]map[string]*Stats `json:"dims"`
 }
 
 type CachedRollups struct {
@@ -109,35 +108,13 @@ func postStats(r *http.Request, id string) (statusCode int, resp interface{}, er
 }
 
 // getStats handles a GET request to /stats
-func getStats(r *http.Request, id string) (statusCode int, resp interface{}, err error) {
+func getStats(r *http.Request, dim string) (statusCode int, resp interface{}, err error) {
 	clientResp := &ClientQueryResponse{
 		Response: Response{Succeeded: true},
 	}
 
-	var calculateRollups = false
-	cachedRollups := rollupCache.Get()
-	if cachedRollups == nil {
-		log.Println("Recomputing rollups")
-		calculateRollups = true
-	} else {
-		raw := json.RawMessage(cachedRollups)
-		clientResp.Rollups = &raw
-	}
-
-	var queryResp *QueryResponse
-	if queryResp, err = Query(id, calculateRollups); err != nil {
+	if clientResp.Dims, err = QueryDims([]string{dim}); err != nil {
 		return 500, nil, fmt.Errorf("Unable to query stats: %s", err)
-	}
-	clientResp.Detail = queryResp.Detail
-	if calculateRollups {
-		rollups := &CachedRollups{
-			Global:     queryResp.Global,
-			PerCountry: queryResp.PerCountry,
-		}
-		bytes, _ := json.Marshal(&rollups)
-		raw := json.RawMessage(bytes)
-		clientResp.Rollups = &raw
-		rollupCache.Set(bytes, rollupExpiration)
 	}
 
 	return 200, clientResp, nil

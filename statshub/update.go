@@ -7,27 +7,33 @@ import (
 	"time"
 )
 
-// StatsUpdate posts stats from within a specific country.  Stats
+// StatsUpdate posts stats with zero, one or more dimensions.  Stats
 // include Counter (cumulative) and Gauges (point in time)
 // (online/offline).
 type StatsUpdate struct {
-	CountryCode string `json:"countryCode"`
+	Dims map[string]string `json:"dims"`
 	Stats
 }
 
 // postToRedis posts Counter and Gauge for the given id to redis
 // using INCRBY and SET respectively.
 func (stats *StatsUpdate) postToRedis(id string) (err error) {
-	// Always treat countries as lower case
-	stats.CountryCode = strings.ToLower(stats.CountryCode)
+	// Always treat dimensions as lower case
+	lowercasedDims := make(map[string]string)
+	for name, key := range stats.Dims {
+		dimName := strings.ToLower(name)
+		dimKey := strings.ToLower(key)
+		lowercasedDims[dimName] = dimKey
+	}
+	stats.Dims = lowercasedDims
 
 	if err = writeIncrement(id, stats); err != nil {
 		return
 	}
-	if err = writeToRedis("counter", id, stats.CountryCode, stats.Counter); err != nil {
+	if err = writeToRedis("counter", id, stats.Dims, stats.Counters); err != nil {
 		return
 	}
-	err = writeToRedis("gauge", id, stats.CountryCode, stats.Gauge)
+	err = writeToRedis("gauge", id, stats.Dims, stats.Gauges)
 
 	return
 }
@@ -40,7 +46,7 @@ func writeIncrement(id string, stats *StatsUpdate) (err error) {
 	}
 	defer conn.Close()
 
-	values := stats.Increment
+	values := stats.Increments
 	keyArgs := make([]interface{}, len(values)+1)
 	keyArgs[0] = "key:counter"
 	i := 1
@@ -49,18 +55,21 @@ func writeIncrement(id string, stats *StatsUpdate) (err error) {
 		keyArgs[i] = key
 		i++
 		detailKey := redisKey("counter", fmt.Sprintf("detail:%s", id), key)
-		countryKey := redisKey("counter", fmt.Sprintf("country:%s", stats.CountryCode), key)
-		globalKey := redisKey("counter", "global", key)
 		err = conn.Send("INCRBY", detailKey, value)
-		err = conn.Send("INCRBY", countryKey, value)
-		err = conn.Send("INCRBY", globalKey, value)
+		for dimName, dimValue := range stats.Dims {
+			dimKey := redisKey("counter", fmt.Sprintf("dim:%s:%s", dimName, dimValue), key)
+			err = conn.Send("INCRBY", dimKey, value)
+		}
 	}
 
 	// Remember counter keys
 	err = conn.Send("SADD", keyArgs...)
 
-	// Save country
-	err = conn.Send("SADD", "countries", stats.CountryCode)
+	// Save dims
+	for name, value := range stats.Dims {
+		err = conn.Send("SADD", "dim", name)
+		err = conn.Send("SADD", "dim:"+name, value)
+	}
 
 	err = conn.Flush()
 	return
@@ -70,7 +79,7 @@ func writeIncrement(id string, stats *StatsUpdate) (err error) {
 func writeToRedis(
 	statType string,
 	id string,
-	countryCode string,
+	dims map[string]string,
 	values map[string]int64) (err error) {
 	var conn redis.Conn
 	if conn, err = connectToRedis(); err != nil {
@@ -104,7 +113,7 @@ func writeToRedis(
 	}
 
 	// The reason we don't do EXPIREAT in the above loop is that the code for
-	// country and global rollups needs to read the return values from GETSET,
+	// dimensional rollups needs to read the return values from GETSET,
 	// and we don't want to bother with interleaving those with the EXPIREAT
 	// return values.
 	for key, _ := range values {
@@ -114,28 +123,29 @@ func writeToRedis(
 
 	err = conn.Flush()
 
-	// Roll up to country and global level
+	// Roll up to dimensions
 	for key, value := range values {
 		var oldValue int64
 		if oldValue, _, err = receive(conn); err != nil {
 			return
 		}
 		delta := value - oldValue
-		countryKey := redisKey(statType, fmt.Sprintf("country:%s", countryCode), qualifiedKey(key))
-		globalKey := redisKey(statType, "global", qualifiedKey(key))
-		err = conn.Send("INCRBY", countryKey, delta)
-		err = conn.Send("EXPIREAT", countryKey, expiration.Unix())
-		err = conn.Send("INCRBY", globalKey, delta)
-		err = conn.Send("EXPIREAT", globalKey, expiration.Unix())
+		for dimName, dimValue := range dims {
+			dimKey := redisKey(statType, fmt.Sprintf("dim:%s:%s", dimName, dimValue), qualifiedKey(key))
+			err = conn.Send("INCRBY", dimKey, delta)
+			err = conn.Send("EXPIREAT", dimKey, expiration.Unix())
+		}
 
 		// Special treatment for "everOnline" gauge on non-fallbacks
 		if statType == statType && key == "online" && value == 1 && strings.Index(id, "fp-") != 0 {
 			everOnlineKey := redisKey(statType, fmt.Sprintf("detail:%s", id), "everOnline")
-			countryEverOnlineKey := redisKey(statType, fmt.Sprintf("country:%s", countryCode), "everOnline")
-			globalEverOnlineKey := redisKey(statType, "global", "everOnline")
+			totalEverOnlineKey := redisKey(statType, "total", "everOnline")
 			conn.Send("SET", everOnlineKey, 1)
-			conn.Send("SADD", countryEverOnlineKey, id)
-			conn.Send("SADD", globalEverOnlineKey, id)
+			conn.Send("SADD", totalEverOnlineKey, id)
+			for dimName, dimValue := range dims {
+				dimKey := redisKey(statType, fmt.Sprintf("dim:%s:%s", dimName, dimValue), "everOnline")
+				err = conn.Send("SADD", dimKey, id)
+			}
 		}
 	}
 

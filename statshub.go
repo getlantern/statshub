@@ -2,7 +2,7 @@
 package main
 
 import (
-	"github.com/getlantern/statshub/archive"
+	//"github.com/getlantern/statshub/archive"
 	_ "github.com/getlantern/statshub/statshub"
 	"log"
 	"net/http"
@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	archive.Start()
+	//archive.Start()
 
 	port := os.Getenv("PORT")
 	log.Printf("About to listen at port: %s", port)
