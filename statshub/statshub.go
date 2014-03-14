@@ -66,6 +66,10 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if "POST" == r.Method {
+		if id == "" {
+			id = "unknown"
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 
 		statusCode, resp, err := postStats(r, id)
@@ -113,7 +117,11 @@ func getStats(r *http.Request, dim string) (statusCode int, resp interface{}, er
 		Response: Response{Succeeded: true},
 	}
 
-	if clientResp.Dims, err = QueryDims([]string{dim}); err != nil {
+	var dimNames []string = nil
+	if dim != "" {
+		dimNames = []string{dim}
+	}
+	if clientResp.Dims, err = QueryDims(dimNames); err != nil {
 		return 500, nil, fmt.Errorf("Unable to query stats: %s", err)
 	}
 
@@ -128,9 +136,6 @@ func extractid(r *http.Request) (id string, err error) {
 		id = ""
 	} else {
 		id = r.URL.Path[lastSlash+1:]
-	}
-	if id == "" {
-		id = "unknown"
 	}
 	return
 }

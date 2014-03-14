@@ -6,7 +6,8 @@ import (
 	"time"
 )
 
-// QueryDims runs a query for values from the requested dimensions
+// QueryDims runs a query for values from the requested dimensions.  If dimNames is empty,
+// QueryDims will query all dimensions.
 func QueryDims(dimNames []string) (statsByDim map[string]map[string]*Stats, err error) {
 	var conn redis.Conn
 	conn, err = connectToRedis()
@@ -15,6 +16,12 @@ func QueryDims(dimNames []string) (statsByDim map[string]map[string]*Stats, err 
 		return
 	}
 	defer conn.Close()
+
+	if dimNames == nil || len(dimNames) == 0 {
+		if dimNames, err = listDimNames(conn); err != nil {
+			return
+		}
+	}
 
 	statsByDim = make(map[string]map[string]*Stats)
 	// statsByDim["auto"] = make(map[string]*Stats)

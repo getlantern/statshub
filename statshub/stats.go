@@ -85,6 +85,20 @@ func listStatKeys(conn redis.Conn, statType string) (keys []string, err error) {
 	return
 }
 
+// listDimNames lists all dimension names.
+func listDimNames(conn redis.Conn) (values []string, err error) {
+	var ivalues interface{}
+	if ivalues, err = conn.Do("SMEMBERS", "dim"); err != nil {
+		return
+	}
+	iavalues := ivalues.([]interface{})
+	values = make([]string, len(iavalues))
+	for i, value := range iavalues {
+		values[i] = string(value.([]uint8))
+	}
+	return
+}
+
 // listDimKeys lists all keys of the given dimension.
 func listDimKeys(conn redis.Conn, name string) (values []string, err error) {
 	var ivalues interface{}
