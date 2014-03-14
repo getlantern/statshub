@@ -33,7 +33,10 @@ func (stats *StatsUpdate) postToRedis(id string) (err error) {
 	if err = writeToRedis("counter", id, stats.Dims, stats.Counters); err != nil {
 		return
 	}
-	err = writeToRedis("gauge", id, stats.Dims, stats.Gauges)
+	if err = writeToRedis("gauge", id, stats.Dims, stats.Gauges); err != nil {
+		return
+	}
+	err = writeMembers(id, stats)
 
 	return
 }
@@ -135,22 +138,47 @@ func writeToRedis(
 			err = conn.Send("INCRBY", dimKey, delta)
 			err = conn.Send("EXPIREAT", dimKey, expiration.Unix())
 		}
-
-		// Special treatment for "everOnline" gauge on non-fallbacks
-		if statType == statType && key == "online" && value == 1 && strings.Index(id, "fp-") != 0 {
-			everOnlineKey := redisKey(statType, fmt.Sprintf("detail:%s", id), "everOnline")
-			totalEverOnlineKey := redisKey(statType, "total", "everOnline")
-			conn.Send("SET", everOnlineKey, 1)
-			conn.Send("SADD", totalEverOnlineKey, id)
-			for dimName, dimValue := range dims {
-				dimKey := redisKey(statType, fmt.Sprintf("dim:%s:%s", dimName, dimValue), "everOnline")
-				err = conn.Send("SADD", dimKey, id)
-			}
-		}
 	}
 
 	// Remember keys
 	err = conn.Send("SADD", keyArgs...)
+
+	err = conn.Flush()
+	return
+}
+
+// writeMembers adds members to redis
+func writeMembers(id string, stats *StatsUpdate) (err error) {
+	var conn redis.Conn
+	if conn, err = connectToRedis(); err != nil {
+		return
+	}
+	defer conn.Close()
+
+	values := stats.Members
+	keyArgs := make([]interface{}, len(values)+1)
+	keyArgs[0] = "key:member"
+	i := 1
+
+	for key, value := range values {
+		keyArgs[i] = key
+		i++
+		detailKey := redisKey("member", fmt.Sprintf("detail:%s", id), key)
+		err = conn.Send("SADD", detailKey, value)
+		for dimName, dimValue := range stats.Dims {
+			dimKey := redisKey("member", fmt.Sprintf("dim:%s:%s", dimName, dimValue), key)
+			err = conn.Send("SADD", dimKey, value)
+		}
+	}
+
+	// Remember member keys
+	err = conn.Send("SADD", keyArgs...)
+
+	// Save dims //TODO: rather than doing this several times for each type of stat, do it just once
+	for name, value := range stats.Dims {
+		err = conn.Send("SADD", "dim", name)
+		err = conn.Send("SADD", "dim:"+name, value)
+	}
 
 	err = conn.Flush()
 	return

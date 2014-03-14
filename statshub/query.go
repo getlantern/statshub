@@ -36,7 +36,11 @@ func QueryDims(dimNames []string) (statsByDim map[string]map[string]*Stats, err 
 		return
 	}
 
-	err = queryGauges(conn, statsByDim)
+	if err = queryGauges(conn, statsByDim); err != nil {
+		return
+	}
+
+	err = queryMembers(conn, statsByDim)
 
 	return
 }
@@ -129,6 +133,55 @@ func queryGauges(conn redis.Conn, statsByDim map[string]map[string]*Stats) (err 
 		dimStats := statsByDim[dimName]
 		for _, dimKey := range dimKeys[dimName] {
 			for _, key := range gaugeKeys {
+				var found bool
+				if val, found, err = receive(conn); err != nil {
+					return
+				}
+				if found {
+					dimStats[dimKey].Gauges[key] = val
+				}
+			}
+		}
+	}
+
+	return
+}
+
+// queryMembers queries member statistics and returns their counts as a Gauge
+func queryMembers(conn redis.Conn, statsByDim map[string]map[string]*Stats) (err error) {
+	var memberKeys []string
+	if memberKeys, err = listStatKeys(conn, "member"); err != nil {
+		return
+	}
+
+	// dimNames and dimKeys are needed for consistent iteration order on statsByDim
+	dimNames := make([]string, len(statsByDim))
+	dimKeys := make(map[string][]string)
+
+	i := 0
+	for dimName, dimStats := range statsByDim {
+		dimNames[i] = dimName
+		keysForDim := make([]string, len(dimStats))
+		j := 0
+		for dimKey, _ := range dimStats {
+			keysForDim[j] = dimKey
+			for _, key := range memberKeys {
+				fullDimKey := redisKey("member", fmt.Sprintf("dim:%s:%s", dimName, dimKey), key)
+				err = conn.Send("SCARD", fullDimKey)
+			}
+			j++
+		}
+		dimKeys[dimName] = keysForDim
+		i++
+	}
+
+	err = conn.Flush()
+
+	var val int64
+	for _, dimName := range dimNames {
+		dimStats := statsByDim[dimName]
+		for _, dimKey := range dimKeys[dimName] {
+			for _, key := range memberKeys {
 				var found bool
 				if val, found, err = receive(conn); err != nil {
 					return
