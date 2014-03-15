@@ -25,8 +25,6 @@ func QueryDims(dimNames []string) (statsByDim map[string]map[string]*Stats, err 
 	}
 
 	statsByDim = make(map[string]map[string]*Stats)
-	// statsByDim["auto"] = make(map[string]*Stats)
-	// statsByDim["total"] = newStats()
 	for _, dimName := range dimNames {
 		dimStats := make(map[string]*Stats)
 		var dimKeys []string
@@ -36,6 +34,9 @@ func QueryDims(dimNames []string) (statsByDim map[string]map[string]*Stats, err 
 		for _, dimKey := range dimKeys {
 			dimStats[dimKey] = newStats()
 		}
+
+		// Synthetic "total" dimKey for calculated totals
+		dimStats["total"] = newStats()
 
 		statsByDim[dimName] = dimStats
 	}
@@ -86,6 +87,8 @@ func queryCounters(conn redis.Conn, statsByDim map[string]map[string]*Stats) (er
 	var val int64
 	for _, dimName := range dimNames {
 		dimStats := statsByDim[dimName]
+		totalByKey := make(map[string]int64)
+
 		for _, dimKey := range dimKeys[dimName] {
 			for _, key := range counterKeys {
 				var found bool
@@ -94,8 +97,13 @@ func queryCounters(conn redis.Conn, statsByDim map[string]map[string]*Stats) (er
 				}
 				if found {
 					dimStats[dimKey].Counters[key] = val
+					totalByKey[key] += val
 				}
 			}
+		}
+
+		for key, total := range totalByKey {
+			dimStats["total"].Counters[key] = total
 		}
 	}
 
@@ -139,6 +147,8 @@ func queryGauges(conn redis.Conn, statsByDim map[string]map[string]*Stats) (err 
 	var val int64
 	for _, dimName := range dimNames {
 		dimStats := statsByDim[dimName]
+		totalByKey := make(map[string]int64)
+
 		for _, dimKey := range dimKeys[dimName] {
 			for _, key := range gaugeKeys {
 				var found bool
@@ -147,8 +157,13 @@ func queryGauges(conn redis.Conn, statsByDim map[string]map[string]*Stats) (err 
 				}
 				if found {
 					dimStats[dimKey].Gauges[key] = val
+					totalByKey[key] += val
 				}
 			}
+		}
+
+		for key, total := range totalByKey {
+			dimStats["total"].Gauges[key] = total
 		}
 	}
 
@@ -188,6 +203,8 @@ func queryMembers(conn redis.Conn, statsByDim map[string]map[string]*Stats) (err
 	var val int64
 	for _, dimName := range dimNames {
 		dimStats := statsByDim[dimName]
+		totalByKey := make(map[string]int64)
+
 		for _, dimKey := range dimKeys[dimName] {
 			for _, key := range memberKeys {
 				var found bool
@@ -196,8 +213,13 @@ func queryMembers(conn redis.Conn, statsByDim map[string]map[string]*Stats) (err
 				}
 				if found {
 					dimStats[dimKey].Gauges[key] = val
+					totalByKey[key] += val
 				}
 			}
+		}
+
+		for key, total := range totalByKey {
+			dimStats["total"].Gauges[key] = total
 		}
 	}
 

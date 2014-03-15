@@ -83,6 +83,16 @@ func TestUpdateAndQuery(t *testing.T) {
 	assertGaugeEquals(t, statsByDim, "user:bob:gaugeA", 5000)
 	assertGaugeEquals(t, statsByDim, "user:bob:gaugeB", 1)
 
+	// Totals should match individual values at this point
+	assertCounterEquals(t, statsByDim, "country:total:counterA", 50)
+	assertCounterEquals(t, statsByDim, "country:total:counterB", 500)
+	assertGaugeEquals(t, statsByDim, "country:total:gaugeA", 5000)
+	assertGaugeEquals(t, statsByDim, "country:total:gaugeB", 1)
+	assertCounterEquals(t, statsByDim, "user:total:counterA", 50)
+	assertCounterEquals(t, statsByDim, "user:total:counterB", 500)
+	assertGaugeEquals(t, statsByDim, "user:total:gaugeA", 5000)
+	assertGaugeEquals(t, statsByDim, "user:total:gaugeB", 1)
+
 	update = &StatsUpdate{
 		Dims: map[string]string{
 			"country": "es",
