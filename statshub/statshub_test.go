@@ -45,7 +45,7 @@ func TestUpdateAndQuery(t *testing.T) {
 		},
 	}
 
-	err = update.postToRedis("myid1")
+	err = update.write("myid1")
 	if err == nil {
 		t.Fatalf("Attempting to post a stat with a dimension key of 'total' should not have been allowed")
 	}
@@ -71,14 +71,14 @@ func TestUpdateAndQuery(t *testing.T) {
 		},
 	}
 
-	postToRedis := func(id string) {
-		if err = update.postToRedis(id); err != nil {
+	writeStats := func(id string) {
+		if err = update.write(id); err != nil {
 			t.Fatalf("Unable to post to redis: %s", err)
 		}
 	}
 
 	sleepTillNextBucket()
-	postToRedis("myid1")
+	writeStats("myid1")
 	sleepTillNextBucket()
 	statsByDim, err := QueryDims([]string{"country", "user"})
 	if err != nil {
@@ -131,7 +131,7 @@ func TestUpdateAndQuery(t *testing.T) {
 	}
 
 	sleepTillNextBucket()
-	postToRedis("myid1")
+	writeStats("myid1")
 	sleepTillNextBucket()
 	statsByDim, err = QueryDims([]string{"country", "user"})
 	if err != nil {
@@ -174,7 +174,7 @@ func TestUpdateAndQuery(t *testing.T) {
 	}
 
 	sleepTillNextBucket()
-	postToRedis("myid1")
+	writeStats("myid1")
 	sleepTillNextBucket()
 	statsByDim, err = QueryDims([]string{"country", "user"})
 	if err != nil {
@@ -198,7 +198,7 @@ func TestUpdateAndQuery(t *testing.T) {
 			},
 		},
 	}
-	postToRedis("myid1")
+	writeStats("myid1")
 
 	// Post to a different id, in a different country
 	update = &StatsUpdate{
@@ -221,7 +221,7 @@ func TestUpdateAndQuery(t *testing.T) {
 			},
 		},
 	}
-	postToRedis("myid2")
+	writeStats("myid2")
 	sleepTillNextBucket()
 	statsByDim, err = QueryDims([]string{"country", "user"})
 	if err != nil {

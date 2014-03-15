@@ -120,7 +120,7 @@ func postStats(r *http.Request, id string) (statusCode int, resp interface{}, er
 		return 400, nil, fmt.Errorf("Unable to decode request: %s", err)
 	}
 
-	if err = stats.postToRedis(id); err != nil {
+	if err = stats.write(id); err != nil {
 		formattedError := fmt.Errorf("Unable to post stats: %s", err)
 		log.Println(formattedError)
 		return 500, nil, formattedError

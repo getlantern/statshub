@@ -13,11 +13,23 @@ import (
 type StatsUpdate struct {
 	Dims map[string]string `json:"dims"`
 	Stats
+	conn redis.Conn
 }
 
-// postToRedis posts Counter and Gauge for the given id to redis
+type statWriter struct {
+	// statType: the type of stat handled by this writer (i.e. "counter" or "gauge")
+	statType string
+
+	// writeDetail: writes the detail entry for the given key
+	writeDetail func(key string, val int64) error
+
+	// writeDim: writes the dimension entry for the given key
+	writeDim func(key string, val int64) error
+}
+
+// update posts Counter and Gauge for the given id to redis
 // using INCRBY and SET respectively.
-func (stats *StatsUpdate) postToRedis(id string) (err error) {
+func (stats *StatsUpdate) write(id string) (err error) {
 	// Always treat dimensions as lower case
 	lowercasedDims := make(map[string]string)
 	for name, key := range stats.Dims {
@@ -30,68 +42,76 @@ func (stats *StatsUpdate) postToRedis(id string) (err error) {
 	}
 	stats.Dims = lowercasedDims
 
-	if err = writeIncrement(id, stats); err != nil {
+	if stats.conn, err = connectToRedis(); err != nil {
 		return
 	}
-	if err = writeToRedis("counter", id, stats.Dims, stats.Counters); err != nil {
+	defer stats.conn.Close()
+
+	if err = stats.writeToRedis("counter", id, stats.Counters); err != nil {
 		return
 	}
-	if err = writeToRedis("gauge", id, stats.Dims, stats.Gauges); err != nil {
+	if err = stats.writeToRedis("gauge", id, stats.Gauges); err != nil {
 		return
 	}
-	err = writeMembers(id, stats)
+	if err = stats.writeIncrements(id); err != nil {
+		return
+	}
+	if err = stats.writeMembers(id); err != nil {
+		return
+	}
+
+	// Save dims
+	for name, value := range stats.Dims {
+		err = stats.conn.Send("SADD", "dim", name)
+		err = stats.conn.Send("SADD", "dim:"+name, value)
+	}
+	err = stats.conn.Flush()
 
 	return
 }
 
-// writeIncrement increments counters in redis
-func writeIncrement(id string, stats *StatsUpdate) (err error) {
-	var conn redis.Conn
-	if conn, err = connectToRedis(); err != nil {
-		return
-	}
-	defer conn.Close()
+func (stats *StatsUpdate) writeIncrements(id string) (err error) {
+	return stats.doWrite(id, stats.Increments, &statWriter{
+		statType: "counter",
+		writeDetail: func(key string, val int64) error {
+			return stats.conn.Send("INCRBY", key, val)
+		},
+		writeDim: func(key string, val int64) error {
+			return stats.conn.Send("INCRBY", key, val)
+		},
+	})
+}
 
-	values := stats.Increments
+func (stats *StatsUpdate) doWrite(
+	id string,
+	values map[string]int64,
+	writer *statWriter) (err error) {
+
 	keyArgs := make([]interface{}, len(values)+1)
-	keyArgs[0] = "key:counter"
+	keyArgs[0] = fmt.Sprintf("key:%s", writer.statType)
 	i := 1
 
-	for key, value := range values {
+	for key, val := range values {
 		keyArgs[i] = key
 		i++
-		detailKey := redisKey("counter", fmt.Sprintf("detail:%s", id), key)
-		err = conn.Send("INCRBY", detailKey, value)
+		detailKey := redisKey(writer.statType, fmt.Sprintf("detail:%s", id), key)
+		err = writer.writeDetail(detailKey, val)
 		for dimName, dimValue := range stats.Dims {
-			dimKey := redisKey("counter", fmt.Sprintf("dim:%s:%s", dimName, dimValue), key)
-			err = conn.Send("INCRBY", dimKey, value)
+			dimKey := redisKey(writer.statType, fmt.Sprintf("dim:%s:%s", dimName, dimValue), key)
+			err = writer.writeDim(dimKey, val)
 		}
 	}
 
-	// Remember counter keys
-	err = conn.Send("SADD", keyArgs...)
-
-	// Save dims
-	for name, value := range stats.Dims {
-		err = conn.Send("SADD", "dim", name)
-		err = conn.Send("SADD", "dim:"+name, value)
-	}
-
-	err = conn.Flush()
+	// Remember keys
+	err = stats.conn.Send("SADD", keyArgs...)
 	return
 }
 
 // writeToRedis writes values (counters or gauges) to redis
-func writeToRedis(
+func (stats *StatsUpdate) writeToRedis(
 	statType string,
 	id string,
-	dims map[string]string,
 	values map[string]int64) (err error) {
-	var conn redis.Conn
-	if conn, err = connectToRedis(); err != nil {
-		return
-	}
-	defer conn.Close()
 
 	now := time.Now()
 	now = now.Truncate(statsPeriod)
@@ -100,6 +120,10 @@ func writeToRedis(
 	keyArgs := make([]interface{}, len(values)+1)
 	keyArgs[0] = "key:" + statType
 	i := 1
+
+	if err = stats.drainReceiveBuffer(); err != nil {
+		return
+	}
 
 	isGauge := statType == "gauge"
 
@@ -117,7 +141,7 @@ func writeToRedis(
 		keyArgs[i] = key
 		i++
 		redisKey := redisKey(statType, fmt.Sprintf("detail:%s", id), qualifiedKey(key))
-		err = conn.Send("GETSET", redisKey, value)
+		err = stats.conn.Send("GETSET", redisKey, value)
 	}
 
 	if isGauge {
@@ -127,43 +151,35 @@ func writeToRedis(
 		// return values.
 		for key, _ := range values {
 			redisKey := redisKey(statType, fmt.Sprintf("detail:%s", id), qualifiedKey(key))
-			err = conn.Send("EXPIREAT", redisKey, expiration.Unix())
+			err = stats.conn.Send("EXPIREAT", redisKey, expiration.Unix())
 		}
 	}
 
-	err = conn.Flush()
+	err = stats.conn.Flush()
 
 	// Roll up to dimensions
 	for key, value := range values {
 		var oldValue int64
-		if oldValue, _, err = receive(conn); err != nil {
+		if oldValue, _, err = receive(stats.conn); err != nil {
 			return
 		}
 		delta := value - oldValue
-		for dimName, dimValue := range dims {
+		for dimName, dimValue := range stats.Dims {
 			dimKey := redisKey(statType, fmt.Sprintf("dim:%s:%s", dimName, dimValue), qualifiedKey(key))
-			err = conn.Send("INCRBY", dimKey, delta)
+			err = stats.conn.Send("INCRBY", dimKey, delta)
 			if isGauge {
-				err = conn.Send("EXPIREAT", dimKey, expiration.Unix())
+				err = stats.conn.Send("EXPIREAT", dimKey, expiration.Unix())
 			}
 		}
 	}
 
 	// Remember keys
-	err = conn.Send("SADD", keyArgs...)
-
-	err = conn.Flush()
+	err = stats.conn.Send("SADD", keyArgs...)
 	return
 }
 
 // writeMembers adds members to redis
-func writeMembers(id string, stats *StatsUpdate) (err error) {
-	var conn redis.Conn
-	if conn, err = connectToRedis(); err != nil {
-		return
-	}
-	defer conn.Close()
-
+func (stats *StatsUpdate) writeMembers(id string) (err error) {
 	values := stats.Members
 	keyArgs := make([]interface{}, len(values)+1)
 	keyArgs[0] = "key:member"
@@ -173,23 +189,21 @@ func writeMembers(id string, stats *StatsUpdate) (err error) {
 		keyArgs[i] = key
 		i++
 		detailKey := redisKey("member", fmt.Sprintf("detail:%s", id), key)
-		err = conn.Send("SADD", detailKey, value)
+		err = stats.conn.Send("SADD", detailKey, value)
 		for dimName, dimValue := range stats.Dims {
 			dimKey := redisKey("member", fmt.Sprintf("dim:%s:%s", dimName, dimValue), key)
-			err = conn.Send("SADD", dimKey, value)
+			err = stats.conn.Send("SADD", dimKey, value)
 		}
 	}
 
 	// Remember member keys
-	err = conn.Send("SADD", keyArgs...)
+	err = stats.conn.Send("SADD", keyArgs...)
+	return
+}
 
-	// Save dims //TODO: rather than doing this several times for each type of stat, do it just once
-	for name, value := range stats.Dims {
-		err = conn.Send("SADD", "dim", name)
-		err = conn.Send("SADD", "dim:"+name, value)
-	}
-
-	err = conn.Flush()
+// drainReceiveBuffer drains any responses in the receive buffer that haven't been read
+func (stats *StatsUpdate) drainReceiveBuffer() (err error) {
+	_, err = stats.conn.Do("")
 	return
 }
 
