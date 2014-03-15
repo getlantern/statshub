@@ -134,7 +134,9 @@ func queryGauges(conn redis.Conn, statsByDim map[string]map[string]*Stats) (err 
 			keysForDim[j] = dimKey
 			for _, key := range gaugeKeys {
 				fullDimKey := redisKey("gauge", fmt.Sprintf("dim:%s:%s", dimName, dimKey), keyForPeriod(key, priorPeriod))
+				currentDimKey := redisKey("gauge", fmt.Sprintf("dim:%s:%s", dimName, dimKey), keyForPeriod(key, currentPeriod))
 				err = conn.Send("GET", fullDimKey)
+				err = conn.Send("GET", currentDimKey)
 			}
 			j++
 		}
@@ -148,6 +150,7 @@ func queryGauges(conn redis.Conn, statsByDim map[string]map[string]*Stats) (err 
 	for _, dimName := range dimNames {
 		dimStats := statsByDim[dimName]
 		totalByKey := make(map[string]int64)
+		currentTotalByKey := make(map[string]int64)
 
 		for _, dimKey := range dimKeys[dimName] {
 			for _, key := range gaugeKeys {
@@ -159,11 +162,21 @@ func queryGauges(conn redis.Conn, statsByDim map[string]map[string]*Stats) (err 
 					dimStats[dimKey].Gauges[key] = val
 					totalByKey[key] += val
 				}
+				if val, found, err = receive(conn); err != nil {
+					return
+				}
+				if found {
+					dimStats[dimKey].GaugesCurrent[key] = val
+					currentTotalByKey[key] += val
+				}
 			}
 		}
 
 		for key, total := range totalByKey {
 			dimStats["total"].Gauges[key] = total
+		}
+		for key, total := range currentTotalByKey {
+			dimStats["total"].GaugesCurrent[key] = total
 		}
 	}
 

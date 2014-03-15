@@ -9,17 +9,19 @@ import (
 
 // Stats is a bundle of stats
 type Stats struct {
-	Counters   map[string]int64  `json:"counters,omitempty"`
-	Increments map[string]int64  `json:"increments,omitempty"`
-	Gauges     map[string]int64  `json:"gauges,omitempty"`
-	Members    map[string]string `json:"members,omitempty"`
+	Counters      map[string]int64  `json:"counters,omitempty"`
+	Increments    map[string]int64  `json:"increments,omitempty"`
+	Gauges        map[string]int64  `json:"gauges,omitempty"`
+	GaugesCurrent map[string]int64  `json:"gaugesCurrent,omitempty"`
+	Members       map[string]string `json:"members,omitempty"`
 }
 
 // newStats constructs a Stats
 func newStats() (stats *Stats) {
 	return &Stats{
-		Counters: make(map[string]int64),
-		Gauges:   make(map[string]int64),
+		Counters:      make(map[string]int64),
+		Gauges:        make(map[string]int64),
+		GaugesCurrent: make(map[string]int64),
 	}
 }
 
