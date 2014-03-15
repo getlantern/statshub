@@ -20,11 +20,15 @@ type statWriter struct {
 	// statType: the type of stat handled by this writer (i.e. "counter" or "gauge")
 	statType string
 
+	needsExpiration bool
+
+	needsDelta bool
+
 	// writeDetail: writes the detail entry for the given key
 	writeDetail func(redisKey string, val interface{}, expiration time.Time) error
 
 	// writeDim: writes the dimension entry for the given key
-	writeDim func(redisKey string, val interface{}, expiration time.Time) error
+	writeDim func(redisKey string, val interface{}, delta interface{}, expiration time.Time) error
 }
 
 // update posts Counter and Gauge for the given id to redis
@@ -47,10 +51,10 @@ func (stats *StatsUpdate) write(id string) (err error) {
 	}
 	defer stats.conn.Close()
 
-	if err = stats.writeToRedis("counter", id, stats.Counters); err != nil {
+	if err = stats.writeCounters(id); err != nil {
 		return
 	}
-	if err = stats.writeToRedis("gauge", id, stats.Gauges); err != nil {
+	if err = stats.writeGauges(id); err != nil {
 		return
 	}
 	if err = stats.writeIncrements(id); err != nil {
@@ -77,8 +81,36 @@ func (stats *StatsUpdate) writeIncrements(id string) (err error) {
 		writeDetail: func(redisKey string, val interface{}, expiration time.Time) error {
 			return stats.conn.Send("INCRBY", redisKey, val)
 		},
-		writeDim: func(redisKey string, val interface{}, expiration time.Time) error {
+		writeDim: func(redisKey string, val interface{}, delta interface{}, expiration time.Time) error {
 			return stats.conn.Send("INCRBY", redisKey, val)
+		},
+	})
+}
+
+func (stats *StatsUpdate) writeCounters(id string) (err error) {
+	return stats.doWriteInt(id, stats.Counters, &statWriter{
+		statType:   "counter",
+		needsDelta: true,
+		writeDetail: func(redisKey string, val interface{}, expiration time.Time) error {
+			return stats.conn.Send("GETSET", redisKey, val)
+		},
+		writeDim: func(redisKey string, val interface{}, delta interface{}, expiration time.Time) error {
+			return stats.conn.Send("INCRBY", redisKey, delta)
+		},
+	})
+}
+
+func (stats *StatsUpdate) writeGauges(id string) (err error) {
+	return stats.doWriteInt(id, stats.Gauges, &statWriter{
+		statType:        "gauge",
+		needsExpiration: true,
+		needsDelta:      true,
+		writeDetail: func(redisKey string, val interface{}, expiration time.Time) error {
+			return stats.conn.Send("GETSET", redisKey, val)
+		},
+		writeDim: func(redisKey string, val interface{}, delta interface{}, expiration time.Time) error {
+			stats.conn.Send("INCRBY", redisKey, delta)
+			return stats.conn.Send("EXPIREAT", redisKey, expiration.Unix())
 		},
 	})
 }
@@ -90,7 +122,7 @@ func (stats *StatsUpdate) writeMembers(id string) (err error) {
 		writeDetail: func(redisKey string, val interface{}, expiration time.Time) error {
 			return stats.conn.Send("SADD", redisKey, val)
 		},
-		writeDim: func(redisKey string, val interface{}, expiration time.Time) error {
+		writeDim: func(redisKey string, val interface{}, oldVal interface{}, expiration time.Time) error {
 			return stats.conn.Send("SADD", redisKey, val)
 		},
 	})
@@ -101,20 +133,13 @@ func (stats *StatsUpdate) doWriteInt(
 	values map[string]int64,
 	writer *statWriter) (err error) {
 
-	i := 1
 	return stats.doWrite(
+		id,
 		len(values),
 		writer,
-		func(keyArgs []interface{}, expiration time.Time) error {
+		func(reportVal func(key string, val interface{}) error) error {
 			for key, val := range values {
-				keyArgs[i] = key
-				i++
-				detailKey := redisKey(writer.statType, fmt.Sprintf("detail:%s", id), key)
-				err = writer.writeDetail(detailKey, val, expiration)
-				for dimName, dimValue := range stats.Dims {
-					dimKey := redisKey(writer.statType, fmt.Sprintf("dim:%s:%s", dimName, dimValue), key)
-					err = writer.writeDim(dimKey, val, expiration)
-				}
+				reportVal(key, val)
 			}
 			return nil
 		})
@@ -125,62 +150,38 @@ func (stats *StatsUpdate) doWriteString(
 	values map[string]string,
 	writer *statWriter) (err error) {
 
-	i := 1
 	return stats.doWrite(
+		id,
 		len(values),
 		writer,
-		func(keyArgs []interface{}, expiration time.Time) error {
+		func(reportVal func(key string, val interface{}) error) error {
 			for key, val := range values {
-				keyArgs[i] = key
-				i++
-				detailKey := redisKey(writer.statType, fmt.Sprintf("detail:%s", id), key)
-				err = writer.writeDetail(detailKey, val, expiration)
-				for dimName, dimValue := range stats.Dims {
-					dimKey := redisKey(writer.statType, fmt.Sprintf("dim:%s:%s", dimName, dimValue), key)
-					err = writer.writeDim(dimKey, val, expiration)
-				}
+				reportVal(key, val)
 			}
 			return nil
 		})
 }
 
 func (stats *StatsUpdate) doWrite(
+	id string,
 	numValues int,
 	writer *statWriter,
-	writeIt func(keyArgs []interface{}, expiration time.Time) error) error {
-	now := time.Now()
-	now = now.Truncate(statsPeriod)
-	expiration := now.Add(3 * statsPeriod)
-
-	keyArgs := make([]interface{}, numValues+1)
-	keyArgs[0] = fmt.Sprintf("key:%s", writer.statType)
-
-	writeIt(keyArgs, expiration)
-
-	// Remember keys
-	return stats.conn.Send("SADD", keyArgs...)
-}
-
-// writeToRedis writes values (counters or gauges) to redis
-func (stats *StatsUpdate) writeToRedis(
-	statType string,
-	id string,
-	values map[string]int64) (err error) {
+	iterateValues func(reportVal func(key string, val interface{}) error) error) (err error) {
 
 	now := time.Now()
 	now = now.Truncate(statsPeriod)
 	expiration := now.Add(3 * statsPeriod)
 
-	keyArgs := make([]interface{}, len(values)+1)
-	keyArgs[0] = "key:" + statType
-	i := 1
-
+	// Drain the receive buffer from redis in case previous work hasn't read all its responses
 	if err = stats.drainReceiveBuffer(); err != nil {
 		return
 	}
 
-	isGauge := statType == "gauge"
+	keyArgs := make([]interface{}, numValues+1)
+	keyArgs[0] = fmt.Sprintf("key:%s", writer.statType)
+	i := 1
 
+	isGauge := writer.statType == "gauge"
 	qualifiedKey := func(key string) string {
 		if isGauge {
 			// For gauges, qualify the key with a date
@@ -190,46 +191,56 @@ func (stats *StatsUpdate) writeToRedis(
 		}
 	}
 
-	// Set details
-	for key, value := range values {
+	err = iterateValues(func(key string, val interface{}) error {
 		keyArgs[i] = key
 		i++
-		redisKey := redisKey(statType, fmt.Sprintf("detail:%s", id), qualifiedKey(key))
-		err = stats.conn.Send("GETSET", redisKey, value)
+		detailKey := redisKey(writer.statType, fmt.Sprintf("detail:%s", id), qualifiedKey(key))
+		return writer.writeDetail(detailKey, val, expiration)
+	})
+	if err != nil {
+		return
 	}
 
-	if isGauge {
+	if writer.needsExpiration {
 		// The reason we don't do EXPIREAT in the above loop is that the code for
 		// dimensional rollups needs to read the return values from GETSET,
 		// and we don't want to bother with interleaving those with the EXPIREAT
 		// return values.
-		for key, _ := range values {
-			redisKey := redisKey(statType, fmt.Sprintf("detail:%s", id), qualifiedKey(key))
-			err = stats.conn.Send("EXPIREAT", redisKey, expiration.Unix())
-		}
+		iterateValues(func(key string, val interface{}) error {
+			redisKey := redisKey(writer.statType, fmt.Sprintf("detail:%s", id), qualifiedKey(key))
+			return stats.conn.Send("EXPIREAT", redisKey, expiration.Unix())
+		})
+	}
+	if err != nil {
+		return
 	}
 
-	err = stats.conn.Flush()
+	if err = stats.conn.Flush(); err != nil {
+		return
+	}
 
-	// Roll up to dimensions
-	for key, value := range values {
-		var oldValue int64
-		if oldValue, _, err = receive(stats.conn); err != nil {
-			return
-		}
-		delta := value - oldValue
-		for dimName, dimValue := range stats.Dims {
-			dimKey := redisKey(statType, fmt.Sprintf("dim:%s:%s", dimName, dimValue), qualifiedKey(key))
-			err = stats.conn.Send("INCRBY", dimKey, delta)
-			if isGauge {
-				err = stats.conn.Send("EXPIREAT", dimKey, expiration.Unix())
+	iterateValues(func(key string, val interface{}) (err error) {
+		var delta int64
+		if writer.needsDelta {
+			var oldVal int64
+			if oldVal, _, err = receive(stats.conn); err != nil {
+				return
 			}
+			delta = val.(int64) - oldVal
 		}
+		for dimName, dimValue := range stats.Dims {
+			dimKey := redisKey(writer.statType, fmt.Sprintf("dim:%s:%s", dimName, dimValue), qualifiedKey(key))
+			err = writer.writeDim(dimKey, val, delta, expiration)
+		}
+		return
+	})
+
+	if err != nil {
+		return
 	}
 
 	// Remember keys
-	err = stats.conn.Send("SADD", keyArgs...)
-	return
+	return stats.conn.Send("SADD", keyArgs...)
 }
 
 // drainReceiveBuffer drains any responses in the receive buffer that haven't been read
