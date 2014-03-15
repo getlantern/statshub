@@ -21,10 +21,10 @@ type statWriter struct {
 	statType string
 
 	// writeDetail: writes the detail entry for the given key
-	writeDetail func(redisKey string, val interface{}) error
+	writeDetail func(redisKey string, val interface{}, expiration time.Time) error
 
 	// writeDim: writes the dimension entry for the given key
-	writeDim func(redisKey string, val interface{}) error
+	writeDim func(redisKey string, val interface{}, expiration time.Time) error
 }
 
 // update posts Counter and Gauge for the given id to redis
@@ -72,12 +72,12 @@ func (stats *StatsUpdate) write(id string) (err error) {
 
 // writeIncrements increments counters in redis
 func (stats *StatsUpdate) writeIncrements(id string) (err error) {
-	return stats.doWrite(id, stats.Increments, &statWriter{
+	return stats.doWriteInt(id, stats.Increments, &statWriter{
 		statType: "counter",
-		writeDetail: func(redisKey string, val interface{}) error {
+		writeDetail: func(redisKey string, val interface{}, expiration time.Time) error {
 			return stats.conn.Send("INCRBY", redisKey, val)
 		},
-		writeDim: func(redisKey string, val interface{}) error {
+		writeDim: func(redisKey string, val interface{}, expiration time.Time) error {
 			return stats.conn.Send("INCRBY", redisKey, val)
 		},
 	})
@@ -85,65 +85,80 @@ func (stats *StatsUpdate) writeIncrements(id string) (err error) {
 
 // writeMembers adds members to redis
 func (stats *StatsUpdate) writeMembers(id string) (err error) {
-	return stats.doWriteStrings(id, stats.Members, &statWriter{
+	return stats.doWriteString(id, stats.Members, &statWriter{
 		statType: "member",
-		writeDetail: func(redisKey string, val interface{}) error {
+		writeDetail: func(redisKey string, val interface{}, expiration time.Time) error {
 			return stats.conn.Send("SADD", redisKey, val)
 		},
-		writeDim: func(redisKey string, val interface{}) error {
+		writeDim: func(redisKey string, val interface{}, expiration time.Time) error {
 			return stats.conn.Send("SADD", redisKey, val)
 		},
 	})
 }
 
-func (stats *StatsUpdate) doWrite(
+func (stats *StatsUpdate) doWriteInt(
 	id string,
 	values map[string]int64,
 	writer *statWriter) (err error) {
 
-	keyArgs := make([]interface{}, len(values)+1)
-	keyArgs[0] = fmt.Sprintf("key:%s", writer.statType)
 	i := 1
-
-	for key, val := range values {
-		keyArgs[i] = key
-		i++
-		detailKey := redisKey(writer.statType, fmt.Sprintf("detail:%s", id), key)
-		err = writer.writeDetail(detailKey, val)
-		for dimName, dimValue := range stats.Dims {
-			dimKey := redisKey(writer.statType, fmt.Sprintf("dim:%s:%s", dimName, dimValue), key)
-			err = writer.writeDim(dimKey, val)
-		}
-	}
-
-	// Remember keys
-	err = stats.conn.Send("SADD", keyArgs...)
-	return
+	return stats.doWrite(
+		len(values),
+		writer,
+		func(keyArgs []interface{}, expiration time.Time) error {
+			for key, val := range values {
+				keyArgs[i] = key
+				i++
+				detailKey := redisKey(writer.statType, fmt.Sprintf("detail:%s", id), key)
+				err = writer.writeDetail(detailKey, val, expiration)
+				for dimName, dimValue := range stats.Dims {
+					dimKey := redisKey(writer.statType, fmt.Sprintf("dim:%s:%s", dimName, dimValue), key)
+					err = writer.writeDim(dimKey, val, expiration)
+				}
+			}
+			return nil
+		})
 }
 
-func (stats *StatsUpdate) doWriteStrings(
+func (stats *StatsUpdate) doWriteString(
 	id string,
 	values map[string]string,
 	writer *statWriter) (err error) {
 
-	keyArgs := make([]interface{}, len(values)+1)
-	keyArgs[0] = fmt.Sprintf("key:%s", writer.statType)
 	i := 1
+	return stats.doWrite(
+		len(values),
+		writer,
+		func(keyArgs []interface{}, expiration time.Time) error {
+			for key, val := range values {
+				keyArgs[i] = key
+				i++
+				detailKey := redisKey(writer.statType, fmt.Sprintf("detail:%s", id), key)
+				err = writer.writeDetail(detailKey, val, expiration)
+				for dimName, dimValue := range stats.Dims {
+					dimKey := redisKey(writer.statType, fmt.Sprintf("dim:%s:%s", dimName, dimValue), key)
+					err = writer.writeDim(dimKey, val, expiration)
+				}
+			}
+			return nil
+		})
+}
 
-	for key, val := range values {
-		keyArgs[i] = key
-		i++
-		detailKey := redisKey(writer.statType, fmt.Sprintf("detail:%s", id), key)
-		err = writer.writeDetail(detailKey, val)
-		for dimName, dimValue := range stats.Dims {
-			dimKey := redisKey(writer.statType, fmt.Sprintf("dim:%s:%s", dimName, dimValue), key)
-			err = writer.writeDim(dimKey, val)
-		}
-	}
+func (stats *StatsUpdate) doWrite(
+	numValues int,
+	writer *statWriter,
+	writeIt func(keyArgs []interface{}, expiration time.Time) error) error {
+	now := time.Now()
+	now = now.Truncate(statsPeriod)
+	expiration := now.Add(3 * statsPeriod)
+
+	keyArgs := make([]interface{}, numValues+1)
+	keyArgs[0] = fmt.Sprintf("key:%s", writer.statType)
+
+	writeIt(keyArgs, expiration)
 
 	// Remember keys
-	err = stats.conn.Send("SADD", keyArgs...)
-	return
+	return stats.conn.Send("SADD", keyArgs...)
 }
 
 // writeToRedis writes values (counters or gauges) to redis
