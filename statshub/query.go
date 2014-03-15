@@ -8,6 +8,7 @@ import (
 
 // QueryDims runs a query for values from the requested dimensions.  If dimNames is empty,
 // QueryDims will query all dimensions.
+// TODO: need to include synthetic total column
 func QueryDims(dimNames []string) (statsByDim map[string]map[string]*Stats, err error) {
 	var conn redis.Conn
 	conn, err = connectToRedis()

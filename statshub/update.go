@@ -98,8 +98,10 @@ func writeToRedis(
 	keyArgs[0] = "key:" + statType
 	i := 1
 
+	isGauge := statType == "gauge"
+
 	qualifiedKey := func(key string) string {
-		if statType == "gauge" {
+		if isGauge {
 			// For gauges, qualify the key with a date
 			return fmt.Sprintf("%s:%d", key, now.Unix())
 		} else {
@@ -115,13 +117,15 @@ func writeToRedis(
 		err = conn.Send("GETSET", redisKey, value)
 	}
 
-	// The reason we don't do EXPIREAT in the above loop is that the code for
-	// dimensional rollups needs to read the return values from GETSET,
-	// and we don't want to bother with interleaving those with the EXPIREAT
-	// return values.
-	for key, _ := range values {
-		redisKey := redisKey(statType, fmt.Sprintf("detail:%s", id), qualifiedKey(key))
-		err = conn.Send("EXPIREAT", redisKey, expiration.Unix())
+	if isGauge {
+		// The reason we don't do EXPIREAT in the above loop is that the code for
+		// dimensional rollups needs to read the return values from GETSET,
+		// and we don't want to bother with interleaving those with the EXPIREAT
+		// return values.
+		for key, _ := range values {
+			redisKey := redisKey(statType, fmt.Sprintf("detail:%s", id), qualifiedKey(key))
+			err = conn.Send("EXPIREAT", redisKey, expiration.Unix())
+		}
 	}
 
 	err = conn.Flush()
@@ -136,7 +140,9 @@ func writeToRedis(
 		for dimName, dimValue := range dims {
 			dimKey := redisKey(statType, fmt.Sprintf("dim:%s:%s", dimName, dimValue), qualifiedKey(key))
 			err = conn.Send("INCRBY", dimKey, delta)
-			err = conn.Send("EXPIREAT", dimKey, expiration.Unix())
+			if isGauge {
+				err = conn.Send("EXPIREAT", dimKey, expiration.Unix())
+			}
 		}
 	}
 
