@@ -23,8 +23,8 @@ func (stats *StatsUpdate) postToRedis(id string) (err error) {
 	for name, key := range stats.Dims {
 		dimName := strings.ToLower(name)
 		dimKey := strings.ToLower(key)
-		if dimName == "total" {
-			return fmt.Errorf("Dimension name 'total' is not allowed because it is a reserved word")
+		if dimKey == "total" {
+			return fmt.Errorf("Dimension key 'total' is not allowed because it is a reserved word")
 		}
 		lowercasedDims[dimName] = dimKey
 	}
