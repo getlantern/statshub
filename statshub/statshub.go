@@ -29,22 +29,17 @@ import (
 )
 
 const (
-	rollupExpiration = 1 * time.Minute
+	cacheExpiration = 1 * time.Minute
 )
 
 var (
-	rollupCache = cache.NewCache()
+	queryCache = cache.NewCache()
 )
 
 // ClientQueryResponse is a Response to a StatsQuery
 type ClientQueryResponse struct {
 	Response
 	Dims map[string]map[string]*Stats `json:"dims"`
-}
-
-type CachedRollups struct {
-	Global     *Stats            `json:"global"`     // Global stats
-	PerCountry map[string]*Stats `json:"perCountry"` // Maps country codes to stats for those countries
 }
 
 // Response is a response to a stats request (update or query)
@@ -81,11 +76,34 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 	} else if "GET" == r.Method {
 		w.Header().Set("Content-Type", "application/json")
 
+		// check cache
+		// TODO: should probably cache more than just the 1 url
+		path := r.URL.Path
+		requestedCountryStats := path == "/stats/country"
+		if requestedCountryStats {
+			cached := queryCache.Get()
+			if cached != nil {
+				w.WriteHeader(200)
+				w.Write(cached)
+				return
+			} else {
+				log.Printf("Countries not found in cache, querying")
+			}
+		}
 		statusCode, resp, err := getStats(r, id)
 		if err != nil {
 			fail(w, statusCode, err)
 		} else {
-			write(w, 200, resp)
+			w.WriteHeader(statusCode)
+			bytes, err := json.Marshal(resp)
+			if err == nil {
+				w.Write(bytes)
+				if requestedCountryStats {
+					queryCache.Set(bytes, cacheExpiration)
+				}
+			} else {
+				log.Printf("Unable to respond to client: %s", err)
+			}
 		}
 	} else {
 		log.Printf("Query: %s", r.URL.Query())
@@ -150,8 +168,7 @@ func write(w http.ResponseWriter, statusCode int, data interface{}) {
 	bytes, err := json.Marshal(data)
 	if err == nil {
 		w.Write(bytes)
-	}
-	if err != nil {
+	} else {
 		log.Printf("Unable to respond to client: %s", err)
 	}
 }
