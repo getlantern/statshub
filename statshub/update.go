@@ -21,10 +21,10 @@ type statWriter struct {
 	statType string
 
 	// writeDetail: writes the detail entry for the given key
-	writeDetail func(key string, val int64) error
+	writeDetail func(redisKey string, val interface{}) error
 
 	// writeDim: writes the dimension entry for the given key
-	writeDim func(key string, val int64) error
+	writeDim func(redisKey string, val interface{}) error
 }
 
 // update posts Counter and Gauge for the given id to redis
@@ -70,14 +70,28 @@ func (stats *StatsUpdate) write(id string) (err error) {
 	return
 }
 
+// writeIncrements increments counters in redis
 func (stats *StatsUpdate) writeIncrements(id string) (err error) {
 	return stats.doWrite(id, stats.Increments, &statWriter{
 		statType: "counter",
-		writeDetail: func(key string, val int64) error {
-			return stats.conn.Send("INCRBY", key, val)
+		writeDetail: func(redisKey string, val interface{}) error {
+			return stats.conn.Send("INCRBY", redisKey, val)
 		},
-		writeDim: func(key string, val int64) error {
-			return stats.conn.Send("INCRBY", key, val)
+		writeDim: func(redisKey string, val interface{}) error {
+			return stats.conn.Send("INCRBY", redisKey, val)
+		},
+	})
+}
+
+// writeMembers adds members to redis
+func (stats *StatsUpdate) writeMembers(id string) (err error) {
+	return stats.doWriteStrings(id, stats.Members, &statWriter{
+		statType: "member",
+		writeDetail: func(redisKey string, val interface{}) error {
+			return stats.conn.Send("SADD", redisKey, val)
+		},
+		writeDim: func(redisKey string, val interface{}) error {
+			return stats.conn.Send("SADD", redisKey, val)
 		},
 	})
 }
@@ -85,6 +99,31 @@ func (stats *StatsUpdate) writeIncrements(id string) (err error) {
 func (stats *StatsUpdate) doWrite(
 	id string,
 	values map[string]int64,
+	writer *statWriter) (err error) {
+
+	keyArgs := make([]interface{}, len(values)+1)
+	keyArgs[0] = fmt.Sprintf("key:%s", writer.statType)
+	i := 1
+
+	for key, val := range values {
+		keyArgs[i] = key
+		i++
+		detailKey := redisKey(writer.statType, fmt.Sprintf("detail:%s", id), key)
+		err = writer.writeDetail(detailKey, val)
+		for dimName, dimValue := range stats.Dims {
+			dimKey := redisKey(writer.statType, fmt.Sprintf("dim:%s:%s", dimName, dimValue), key)
+			err = writer.writeDim(dimKey, val)
+		}
+	}
+
+	// Remember keys
+	err = stats.conn.Send("SADD", keyArgs...)
+	return
+}
+
+func (stats *StatsUpdate) doWriteStrings(
+	id string,
+	values map[string]string,
 	writer *statWriter) (err error) {
 
 	keyArgs := make([]interface{}, len(values)+1)
@@ -174,29 +213,6 @@ func (stats *StatsUpdate) writeToRedis(
 	}
 
 	// Remember keys
-	err = stats.conn.Send("SADD", keyArgs...)
-	return
-}
-
-// writeMembers adds members to redis
-func (stats *StatsUpdate) writeMembers(id string) (err error) {
-	values := stats.Members
-	keyArgs := make([]interface{}, len(values)+1)
-	keyArgs[0] = "key:member"
-	i := 1
-
-	for key, value := range values {
-		keyArgs[i] = key
-		i++
-		detailKey := redisKey("member", fmt.Sprintf("detail:%s", id), key)
-		err = stats.conn.Send("SADD", detailKey, value)
-		for dimName, dimValue := range stats.Dims {
-			dimKey := redisKey("member", fmt.Sprintf("dim:%s:%s", dimName, dimValue), key)
-			err = stats.conn.Send("SADD", dimKey, value)
-		}
-	}
-
-	// Remember member keys
 	err = stats.conn.Send("SADD", keyArgs...)
 	return
 }
