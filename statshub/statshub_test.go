@@ -36,6 +36,22 @@ func TestUpdateAndQuery(t *testing.T) {
 
 	update := &StatsUpdate{
 		Dims: map[string]string{
+			"country": "total",
+		},
+		Stats: Stats{
+			Counters: map[string]int64{
+				"counterA": 10,
+			},
+		},
+	}
+
+	err = update.postToRedis("myid1")
+	if err == nil {
+		t.Fatalf("Attempting to post a stat with a dimension key of 'total' should not have been allowed")
+	}
+
+	update = &StatsUpdate{
+		Dims: map[string]string{
 			"country": "es",
 			"user":    "bob",
 		},
@@ -135,6 +151,16 @@ func TestUpdateAndQuery(t *testing.T) {
 	assertGaugeEquals(t, statsByDim, "user:bob:gaugeA", 6000)
 	assertGaugeEquals(t, statsByDim, "user:bob:gaugeB", 2)
 
+	// Totals should still match individual values at this point
+	assertCounterEquals(t, statsByDim, "country:total:counterA", 60)
+	assertCounterEquals(t, statsByDim, "country:total:counterB", 1100)
+	assertGaugeEquals(t, statsByDim, "country:total:gaugeA", 6000)
+	assertGaugeEquals(t, statsByDim, "country:total:gaugeB", 2)
+	assertCounterEquals(t, statsByDim, "user:total:counterA", 60)
+	assertCounterEquals(t, statsByDim, "user:total:counterB", 1100)
+	assertGaugeEquals(t, statsByDim, "user:total:gaugeA", 6000)
+	assertGaugeEquals(t, statsByDim, "user:total:gaugeB", 2)
+
 	update = &StatsUpdate{
 		Dims: map[string]string{
 			"country": "es",
@@ -218,6 +244,16 @@ func TestUpdateAndQuery(t *testing.T) {
 	assertCounterEquals(t, statsByDim, "user:bob:counterB", 1800)
 	assertGaugeEquals(t, statsByDim, "user:bob:gaugeA", 13000)
 	assertGaugeEquals(t, statsByDim, "user:bob:gaugeB", 3)
+
+	// Totals should now inclue all dimensions
+	assertCounterEquals(t, statsByDim, "country:total:counterA", 130)
+	assertCounterEquals(t, statsByDim, "country:total:counterB", 1800)
+	assertGaugeEquals(t, statsByDim, "country:total:gaugeA", 13000)
+	assertGaugeEquals(t, statsByDim, "country:total:gaugeB", 3)
+	assertCounterEquals(t, statsByDim, "user:total:counterA", 130)
+	assertCounterEquals(t, statsByDim, "user:total:counterB", 1800)
+	assertGaugeEquals(t, statsByDim, "user:total:gaugeA", 13000)
+	assertGaugeEquals(t, statsByDim, "user:total:gaugeB", 3)
 
 	sleepTillNextBucket()
 	statsByDim, err = QueryDims([]string{"country", "user"})
