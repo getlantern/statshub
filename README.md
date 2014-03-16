@@ -36,7 +36,7 @@ Increments - increments the existing value of a counter by some delta.
 
 Gauges - directly sets the value of a gauge.
 
-Membership - tracks the value's membership in a set of unique values.  The
+Members - tracks the value's membership in a set of unique values.  The
 corresponding gauge value is calculated as the count of unique members.
 
 ### Querying Stats
