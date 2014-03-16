@@ -72,6 +72,7 @@ This example session submits and queries stats for the ids "myid1" and "myid2".
 
 Here we are submitting and querying stats for the id 523523.
 
+#### Update
 ```bash
 curl --data-binary \
 '{"dims": {
@@ -86,14 +87,17 @@ curl --data-binary \
 "http://localhost:9000/stats/myid1"
 ```
 
+#### Response
 ```bash
 {"Succeeded":true,"Error":""}%    
 ```
 
+#### Query
 ```bash
 curl "http://localhost:9000/stats/" | python -mjson.tool
 ```
 
+#### Response
 ```json
 {
     "Error": "",
@@ -155,6 +159,7 @@ curl "http://localhost:9000/stats/" | python -mjson.tool
 }
 ```
 
+#### Update
 ```bash
 curl --data-binary \
 '{"dims": {
@@ -169,14 +174,17 @@ curl --data-binary \
 "http://localhost:9000/stats/myid1"
 ```
 
+#### Response
 ```bash
 {"Succeeded":true,"Error":""}%    
 ```
 
+#### Query
 ```bash
 curl "http://localhost:9000/stats/country" | python -mjson.tool
 ```
 
+#### Response
 ```json
 {
     "Error": "",
