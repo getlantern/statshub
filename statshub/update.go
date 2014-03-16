@@ -20,8 +20,10 @@ type statWriter struct {
 	// statType: the type of stat handled by this writer (i.e. "counter" or "gauge")
 	statType string
 
+	// needsExpiration: whether or not the values written by this writer need to be expired
 	needsExpiration bool
 
+	// needsDelta: whether or not the dimensions to be written by this writer need a delta from the written detail
 	needsDelta bool
 
 	// writeDetail: writes the detail entry for the given key
