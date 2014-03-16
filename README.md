@@ -1,37 +1,83 @@
-statshub
-========
+## statshub
 
-statshub is a hub for statistics from Lantern clients.
+statshub is a repository for incrementally calculated statistics stored using a
+[dimensional](http://en.wikipedia.org/wiki/Dimensional_modeling) model.
 
-It provides a basic API for setting and querying statistics using a RESTful API.
+Stats are updated and queried using a RESTful API.
 
-statshub is currently deployed to Heroku at http://pure-journey-3547.herokuapp.com/.
+statshub for Lantern is currently deployed to Heroku at
+http://pure-journey-3547.herokuapp.com/.
 
-There are two types of supported stats:
+### Stat IDs
+Every stat tracked by statshub is associated to a string id.  When stats are
+updated, they are updated relative to their original values as tied to that 
+string id.
+
+statshub can roll up stats to any number of unrelated dimensions.
+
+### Stat Types
+statshub tracks two kinds of stats:
 
 Counters - these keep incrementing forever (e.g. an odometer)
 
-Gauges - these track an absolute value that can change over time (a speedometer).  Statshub assumes that gauges are reported every 5 minutes.  It stores them in 6 minute buckets.  For detail-level gauges, the most recent reported value is given.  For aggregate gauges, the reported values reflect the prior 6 minute bucket, thus they can be up to 6 minutes out of date.
+Gauges - these track an absolute value that can change over time (a
+speedometer).  Statshub assumes that gauges are reported every 5 minutes.  It 
+stores them in 6 minute buckets.  For rolled up gauges, in order to avoid
+presenting incomplete or fluctuating information, the reported values reflect
+the prior 6 minute bucket. Consequently, they can be up to 6 minutes out of
+date.
 
-Stats are identified by a string key, which is always normalized to lowercase.
+### Updating Stats
+Stats can be updated in one of four ways:
 
-Stats are always submitted for a particular id and within a specific country code.  Stat submissions can include any number of counters and gauges.
+Counters - directly sets the value of a counter.
 
-There are two ways to modify counters.
+Increments - increments the existing value of a counter by some delta.
 
-# Use Stats.Counter - this sets the value of the counter to the specified value.
+Gauges - directly sets the value of a gauge.
 
-# Use Stats.Increment - this increments the value of the counter by the specified amount.
+Membership - tracks the value's membership in a set of unique values.  The
+corresponding gauge value is calculated as the count of unique members.
 
-Stats query results always include all counters and gauges at the detail level, as well as rollups globally and rollups for each country
-from which we've received stats in the past.
+### Querying Stats
+Stats are queried at the dimension level.  A query can ask for only a single 
+dimension, or omit the dimension and receive stats for all dimensions.
 
-statshub submits its stats to Google Big Query on an hourly basis.  It authenticates using OAuth and connects to a specific project,
-using the environment variables `GOOGLE_PROJECT` and `GOOGLE_TOKEN`.
+For use by Lantern specifically, the statshub REST api caches queries for the
+"country" dimension for 1 minute.  It does this as a performance optimization
+for this very frequent query.
 
-### Example Session
+### Stat Archival
+statshub archives its stats to Google Big Query every 10 minutes.  It
+authenticates using OAuth and connects to a specific project, using the
+environment variables `GOOGLE_PROJECT` and `GOOGLE_TOKEN`.
+
+statshub expects Google Big Query to contain a dataset named "statshub".  It
+populates one table per dimension inside this dataset.
+
+### Example curl Session
+
+This example session submits and queries stats for the ids "myid1" and "myid2".
 
 Here we are submitting and querying stats for the id 523523.
+
+```bash
+curl --data-binary \
+'{"dims": {
+    "countryCode": "es",
+    "user": "bob"
+    },
+  "counters": { "counterA": 50 },
+  "increments": { "counterB": 500 },
+  "gauges": { "gaugeA": 5000 },
+  "members": { "gaugeB": "item1" }
+}' \
+"http://localhost:9000/stats/myid1"
+```
+
+```bash
+{"Succeeded":true,"Error":""}%    
+```
 
 ```bash
 Macintosh% curl --data-binary '{"countryCode": "es", "counter": { "counter1": 5 }}' "http://localhost:9000/stats/myid"{"Succeeded":true,"Error":""}%                                                                                                                              
