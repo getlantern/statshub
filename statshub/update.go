@@ -16,25 +16,23 @@ type StatsUpdate struct {
 	conn redis.Conn
 }
 
+// statWriter encapsulates the differences in writing stats between Counters, Increments, Gauges and Members
 type statWriter struct {
 	// statType: the type of stat handled by this writer (i.e. "counter" or "gauge")
 	statType string
-
-	// needsExpiration: whether or not the values written by this writer need to be expired
-	needsExpiration bool
 
 	// needsDelta: whether or not the dimensions to be written by this writer need a delta from the written detail
 	needsDelta bool
 
 	// writeDetail: writes the detail entry for the given key
-	writeDetail func(redisKey string, val interface{}, expiration time.Time) error
+	writeDetail func(redisKey string, val interface{}) error
 
 	// writeDim: writes the dimension entry for the given key
-	writeDim func(redisKey string, val interface{}, delta interface{}, expiration time.Time) error
+	writeDim func(redisKey string, val interface{}, delta interface{}) error
 }
 
-// update posts Counter and Gauge for the given id to redis
-// using INCRBY and SET respectively.
+// write posts Counters, Increments, and Gauges and Members for the given id to redis,
+// precalculating rollups for each dimension in stats.Dims.
 func (stats *StatsUpdate) write(id string) (err error) {
 	// Always treat dimensions as lower case
 	lowercasedDims := make(map[string]string)
@@ -56,10 +54,10 @@ func (stats *StatsUpdate) write(id string) (err error) {
 	if err = stats.writeCounters(id); err != nil {
 		return
 	}
-	if err = stats.writeGauges(id); err != nil {
+	if err = stats.writeIncrements(id); err != nil {
 		return
 	}
-	if err = stats.writeIncrements(id); err != nil {
+	if err = stats.writeGauges(id); err != nil {
 		return
 	}
 	if err = stats.writeMembers(id); err != nil {
@@ -80,38 +78,55 @@ func (stats *StatsUpdate) write(id string) (err error) {
 func (stats *StatsUpdate) writeIncrements(id string) (err error) {
 	return stats.doWriteInt(id, stats.Increments, &statWriter{
 		statType: "counter",
-		writeDetail: func(redisKey string, val interface{}, expiration time.Time) error {
+		writeDetail: func(redisKey string, val interface{}) error {
+			// Detail values are simply incremented
 			return stats.conn.Send("INCRBY", redisKey, val)
 		},
-		writeDim: func(redisKey string, val interface{}, delta interface{}, expiration time.Time) error {
+		writeDim: func(redisKey string, val interface{}, delta interface{}) error {
+			// Rollups are simply incremented
 			return stats.conn.Send("INCRBY", redisKey, val)
 		},
 	})
 }
 
+// writeCounters sets counters in redis
 func (stats *StatsUpdate) writeCounters(id string) (err error) {
 	return stats.doWriteInt(id, stats.Counters, &statWriter{
 		statType:   "counter",
 		needsDelta: true,
-		writeDetail: func(redisKey string, val interface{}, expiration time.Time) error {
+		writeDetail: func(redisKey string, val interface{}) error {
+			// Detail values are set using GETSET so that they return their old value
 			return stats.conn.Send("GETSET", redisKey, val)
 		},
-		writeDim: func(redisKey string, val interface{}, delta interface{}, expiration time.Time) error {
+		writeDim: func(redisKey string, val interface{}, delta interface{}) error {
+			// Rollups are incremented by the delta, which is the new value - old value of the detail
 			return stats.conn.Send("INCRBY", redisKey, delta)
 		},
 	})
 }
 
+// writeGauges sets gauges in redis
 func (stats *StatsUpdate) writeGauges(id string) (err error) {
+	now := time.Now()
+	now = now.Truncate(statsPeriod)
+	expiration := now.Add(3 * statsPeriod)
+
 	return stats.doWriteInt(id, stats.Gauges, &statWriter{
-		statType:        "gauge",
-		needsExpiration: true,
-		needsDelta:      true,
-		writeDetail: func(redisKey string, val interface{}, expiration time.Time) error {
-			return stats.conn.Send("GETSET", redisKey, val)
+		statType:   "gauge",
+		needsDelta: true,
+		writeDetail: func(redisKey string, val interface{}) error {
+			// Gauge keys are qualified by the current period's Unix timestamp
+			redisKey = keyForPeriod(redisKey, now)
+			// Detail values are set using GETSET so that they return their old value
+			stats.conn.Send("GETSET", redisKey, val)
+			// Detail values are expired every statsPeriod period
+			return stats.conn.Send("EXPIREAT", redisKey, expiration.Unix())
 		},
-		writeDim: func(redisKey string, val interface{}, delta interface{}, expiration time.Time) error {
+		writeDim: func(redisKey string, val interface{}, delta interface{}) error {
+			redisKey = keyForPeriod(redisKey, now)
+			// Rollups are incremented by the delta, which is the new value - old value of the detail
 			stats.conn.Send("INCRBY", redisKey, delta)
+			// Rollups are expired every statsPeriod period
 			return stats.conn.Send("EXPIREAT", redisKey, expiration.Unix())
 		},
 	})
@@ -121,10 +136,12 @@ func (stats *StatsUpdate) writeGauges(id string) (err error) {
 func (stats *StatsUpdate) writeMembers(id string) (err error) {
 	return stats.doWriteString(id, stats.Members, &statWriter{
 		statType: "member",
-		writeDetail: func(redisKey string, val interface{}, expiration time.Time) error {
+		writeDetail: func(redisKey string, val interface{}) error {
+			// Record member in set
 			return stats.conn.Send("SADD", redisKey, val)
 		},
-		writeDim: func(redisKey string, val interface{}, oldVal interface{}, expiration time.Time) error {
+		writeDim: func(redisKey string, val interface{}, oldVal interface{}) error {
+			// Record member in set
 			return stats.conn.Send("SADD", redisKey, val)
 		},
 	})
@@ -164,15 +181,17 @@ func (stats *StatsUpdate) doWriteString(
 		})
 }
 
+// doWrite handles the general pattern for writing part of a StatsUpdate (e.g. Counters) to redis
+// For each stat key, this means:
+//
+// 1. Write the detail value
+// 2. For each dimension, update the rollup (potentially calculating this based on how the detail value changed relative its prior value)
+// 3. Record the stat key so that future queries know which stats to include
 func (stats *StatsUpdate) doWrite(
 	id string,
 	numValues int,
 	writer *statWriter,
 	iterateValues func(reportVal func(key string, val interface{}) error) error) (err error) {
-
-	now := time.Now()
-	now = now.Truncate(statsPeriod)
-	expiration := now.Add(3 * statsPeriod)
 
 	// Drain the receive buffer from redis in case previous work hasn't read all its responses
 	if err = stats.drainReceiveBuffer(); err != nil {
@@ -183,36 +202,12 @@ func (stats *StatsUpdate) doWrite(
 	keyArgs[0] = fmt.Sprintf("key:%s", writer.statType)
 	i := 1
 
-	isGauge := writer.statType == "gauge"
-	qualifiedKey := func(key string) string {
-		if isGauge {
-			// For gauges, qualify the key with a date
-			return fmt.Sprintf("%s:%d", key, now.Unix())
-		} else {
-			return key
-		}
-	}
-
 	err = iterateValues(func(key string, val interface{}) error {
 		keyArgs[i] = key
 		i++
-		detailKey := redisKey(writer.statType, fmt.Sprintf("detail:%s", id), qualifiedKey(key))
-		return writer.writeDetail(detailKey, val, expiration)
+		detailKey := redisKey(writer.statType, fmt.Sprintf("detail:%s", id), key)
+		return writer.writeDetail(detailKey, val)
 	})
-	if err != nil {
-		return
-	}
-
-	if writer.needsExpiration {
-		// The reason we don't do EXPIREAT in the above loop is that the code for
-		// dimensional rollups needs to read the return values from GETSET,
-		// and we don't want to bother with interleaving those with the EXPIREAT
-		// return values.
-		iterateValues(func(key string, val interface{}) error {
-			redisKey := redisKey(writer.statType, fmt.Sprintf("detail:%s", id), qualifiedKey(key))
-			return stats.conn.Send("EXPIREAT", redisKey, expiration.Unix())
-		})
-	}
 	if err != nil {
 		return
 	}
@@ -231,8 +226,8 @@ func (stats *StatsUpdate) doWrite(
 			delta = val.(int64) - oldVal
 		}
 		for dimName, dimValue := range stats.Dims {
-			dimKey := redisKey(writer.statType, fmt.Sprintf("dim:%s:%s", dimName, dimValue), qualifiedKey(key))
-			err = writer.writeDim(dimKey, val, delta, expiration)
+			dimKey := redisKey(writer.statType, fmt.Sprintf("dim:%s:%s", dimName, dimValue), key)
+			err = writer.writeDim(dimKey, val, delta)
 		}
 		return
 	})

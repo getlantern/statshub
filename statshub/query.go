@@ -6,12 +6,15 @@ import (
 	"time"
 )
 
+// statReader encapsulates the differences in reading stats between Counters, Gauges and Members
 type statReader struct {
 	// statType: the type of stat handled by this reader (i.e. "counter" or "gauge")
 	statType string
 
+	// prepareRead prepares the read (typically by SENDing a command like GET)
 	prepareRead func(redisKey string) error
 
+	// recordVal takes a value that's been read from Redis and sets it on the supplied stats
 	recordVal func(stats *Stats, key string, val int64)
 }
 
@@ -137,6 +140,12 @@ func queryMembers(conn redis.Conn, statsByDim map[string]map[string]*Stats) (err
 	)
 }
 
+// doQuery implements the basic querying flow, which is:
+//
+// 1. List all keys for the type of stat
+// 2. For each dimension, dimension key and stat key, prepare a query (e.g. issue a GET)
+// 3. Flush the connection to execute the query
+// 4. Read the responses and populate a Stats object with the key/value pairs for each dimension and dimension key
 func doQuery(conn redis.Conn, statsByDim map[string]map[string]*Stats, reader *statReader) (err error) {
 	var keys []string
 	if keys, err = listStatKeys(conn, reader.statType); err != nil {

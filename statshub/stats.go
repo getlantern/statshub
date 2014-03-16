@@ -5,6 +5,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Stats is a bundle of stats
@@ -15,6 +16,16 @@ type Stats struct {
 	GaugesCurrent map[string]int64  `json:"gaugesCurrent,omitempty"`
 	Members       map[string]string `json:"members,omitempty"`
 }
+
+var (
+	// reportingPeriod is how frequently clients report stats
+	reportingPeriod = 5 * time.Minute
+
+	// statsPeriod controls the buckets in which we store aggregated stats,
+	// which are sized slightly larger than the reportingPeriod to accommodate
+	// timing differences.
+	statsPeriod = reportingPeriod + 1*time.Minute
+)
 
 // newStats constructs a Stats
 func newStats() (stats *Stats) {

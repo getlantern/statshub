@@ -15,14 +15,6 @@ const (
 
 var (
 	pool *redis.Pool
-
-	// reportingPeriod is how frequently clients report stats
-	reportingPeriod = 5 * time.Minute
-
-	// statsPeriod controls the buckets in which we store aggregated stats,
-	// which are sized slightly larger than the reportingPeriod to accommodate
-	// timing differences.
-	statsPeriod = reportingPeriod + 1*time.Minute
 )
 
 // init() initializes our redis environment by setting up a connection pool
