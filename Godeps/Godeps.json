@@ -23,7 +23,7 @@
 		},
 		{
 			"ImportPath": "github.com/oxtoacart/oauther/oauth",
-			"Rev": "564b7afa2c0767ba84345a2d3540f274c890993f"
+			"Rev": "a16fb8bd26ccbe62c8616f72613ca6061834fe03"
 		},
 		{
 			"ImportPath": "github.com/oxtoacart/webbrowser",
