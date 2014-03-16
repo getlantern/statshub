@@ -47,6 +47,17 @@ For use by Lantern specifically, the statshub REST api caches queries for the
 "country" dimension for 1 minute.  It does this as a performance optimization
 for this very frequent query.
 
+Query results include a couple of special items:
+
+Totals - for every dimension, statshub returns the total across all dimension
+keys.
+
+GaugesCurrent - In addition to returning the usual Gauges (which are up to 6
+minutes out of date), the query result also includes GaugesCurrent, which shows
+gauges for the current period.  These are not particularly reliable because of
+the reasons mentioned above, but they can be handy for testing to make sure
+that updates are being recorded.
+
 ### Stat Archival
 statshub archives its stats to Google Big Query every 10 minutes.  It
 authenticates using OAuth and connects to a specific project, using the
@@ -64,7 +75,7 @@ Here we are submitting and querying stats for the id 523523.
 ```bash
 curl --data-binary \
 '{"dims": {
-    "countryCode": "es",
+    "country": "es",
     "user": "bob"
     },
   "counters": { "counterA": 50 },
@@ -80,105 +91,128 @@ curl --data-binary \
 ```
 
 ```bash
-Macintosh% curl --data-binary '{"countryCode": "es", "counter": { "counter1": 5 }}' "http://localhost:9000/stats/myid"{"Succeeded":true,"Error":""}%                                                                                                                              
-
-Macintosh% curl "http://localhost:9000/stats/myid"                                                                    
-{"Succeeded":true,"Error":"","detail":{"counter":{"counter1":5},"gauge":{"everOnline":0}},"rollups":{"global":{"counter":{"counter1":5},"gauge":{"everOnline":0}},"perCountry":{"es":{"counter":{"counter1":5},"gauge":{"everOnline":0}}}}}%                                      
-
-Macintosh% curl --data-binary '{"countryCode": "es", "counter": { "counter1": 7 }}' "http://localhost:9000/stats/myid"{"Succeeded":true,"Error":""}%                                                                                                                              
-
-Macintosh% curl "http://localhost:9000/stats/myid"                                                                    
-{"Succeeded":true,"Error":"","detail":{"counter":{"counter1":7},"gauge":{"everOnline":0}},"rollups":{"global":{"counter":{"counter1":5},"gauge":{"everOnline":0}},"perCountry":{"es":{"counter":{"counter1":5},"gauge":{"everOnline":0}}}}}%                                      
-
-Macintosh% curl --data-binary '{"countryCode": "es", "increment": { "counter1": 9 }}' "http://localhost:9000/stats/myid"
-{"Succeeded":true,"Error":""}%                                                                                                           
-
-Macintosh% curl "http://localhost:9000/stats/myid"                                                                      
-{"Succeeded":true,"Error":"","detail":{"counter":{"counter1":16},"gauge":{"everOnline":0}},"rollups":{"global":{"counter":{"counter1":5},"gauge":{"everOnline":0}},"perCountry":{"es":{"counter":{"counter1":5},"gauge":{"everOnline":0}}}}}%                                     
-
-Macintosh% curl --data-binary '{"countryCode": "de", "increment": { "counter1": 10 }}' "http://localhost:9000/stats/myid"
-{"Succeeded":true,"Error":""}%                                                                                                                                                                              
-Macintosh% curl "http://localhost:9000/stats/myid"                                                                       
-{"Succeeded":true,"Error":"","detail":{"counter":{"counter1":26},"gauge":{"everOnline":0}},"rollups":{"global":{"counter":{"counter1":26},"gauge":{"everOnline":0}},"perCountry":{"de":{"counter":{"counter1":10},"gauge":{"everOnline":0}},"es":{"counter":{"counter1":16},"gauge":{"everOnline":0}}}}}%                                                                                                               
-Macintosh% curl --data-binary '{"countryCode": "de", "increment": { "counter2": 15 }}' "http://localhost:9000/stats/myid"
-{"Succeeded":true,"Error":""}%                                                                                                                                                                              
-Macintosh% curl "http://localhost:9000/stats/myid"                                                                       
-{"Succeeded":true,"Error":"","detail":{"counter":{"counter1":26,"counter2":15},"gauge":{"everOnline":0}},"rollups":{"global":{"counter":{"counter1":26},"gauge":{"everOnline":0}},"perCountry":{"de":{"counter":{"counter1":10},"gauge":{"everOnline":0}},"es":{"counter":{"counter1":16},"gauge":{"everOnline":0}}}}}%                                                                                                 
-Macintosh% curl --data-binary '{"countryCode": "es", "gauge": { "online": 1 }}' "http://localhost:9000/stats/myid"      
-{"Succeeded":true,"Error":""}%                                                                                                                                                                              
-Macintosh% date
-Thu Mar 13 16:18:16 CDT 2014
-
-Macintosh% curl "http://localhost:9000/stats/myid"
-{"Succeeded":true,"Error":"","detail":{"counter":{"counter1":26,"counter2":15},"gauge":{"everOnline":1,"online":1}},"rollups":{"global":{"counter":{"counter1":26,"counter2":15},"gauge":{"everOnline":1,"online":0}},"perCountry":{"de":{"counter":{"counter1":10,"counter2":15},"gauge":{"everOnline":0,"online":0}},"es":{"counter":{"counter1":16,"counter2":0},"gauge":{"everOnline":1,"online":0}}}}}%            
-
-Macintosh% date    
-Thu Mar 13 16:23:56 CDT 2014
-
-Macintosh% curl "http://localhost:9000/stats/myid"
-{"Succeeded":true,"Error":"","detail":{"counter":{"counter1":26,"counter2":15},"gauge":{"everOnline":1,"online":1}},"rollups":{"global":{"counter":{"counter1":26,"counter2":15},"gauge":{"everOnline":1,"online":1}},"perCountry":{"de":{"counter":{"counter1":10,"counter2":15},"gauge":{"everOnline":0,"online":0}},"es":{"counter":{"counter1":16,"counter2":0},"gauge":{"everOnline":1,"online":1}}}}}%            
+curl "http://localhost:9000/stats/" | python -mjson.tool
 ```
-
-Pretty printed request data:
-
-```json
-{
-    "counter": {
-        "myotherstat": 50,
-        "mystat": 1
-    },
-    "countryCode": "es",
-    "gauge": {
-        "mygauge": 78,
-        "online": 1
-    }
-}
-```
-
-Pretty printed response data:
 
 ```json
 {
     "Error": "",
     "Succeeded": true,
-    "rollups": {
-        "global": {
-            "counter": {
-                "myotherstat": 1244600,
-                "mystat": 24892
-            },
-            "gauge": {
-                "mygauge": 39,
-                "online": 0
-            }
-        },
-        "perCountry": {
+    "dims": {
+        "country": {
             "es": {
-                "counter": {
-                    "myotherstat": 1244600,
-                    "mystat": 24892
+                "counters": {
+                    "counterA": 50,
+                    "counterB": 500
                 },
-                "gauge": {
-                    "mygauge": 39,
-                    "online": 0
+                "gauges": {
+                    "gaugeB": 1
+                },
+                "gaugesCurrent": {
+                    "gaugeA": 5000
+                }
+            },
+            "total": {
+                "counters": {
+                    "counterA": 50,
+                    "counterB": 500
+                },
+                "gauges": {
+                    "gaugeB": 1
+                },
+                "gaugesCurrent": {
+                    "gaugeA": 5000
                 }
             }
-        }
-    },
-    "detail": {
-        "counter": {
-            "myotherstat": 1244600,
-            "mystat": 24892
         },
-        "gauge": {
-            "mygauge": 39,
-            "online": 0
+        "user": {
+            "bob": {
+                "counters": {
+                    "counterA": 50,
+                    "counterB": 500
+                },
+                "gauges": {
+                    "gaugeB": 1
+                },
+                "gaugesCurrent": {
+                    "gaugeA": 5000
+                }
+            },
+            "total": {
+                "counters": {
+                    "counterA": 50,
+                    "counterB": 500
+                },
+                "gauges": {
+                    "gaugeB": 1
+                },
+                "gaugesCurrent": {
+                    "gaugeA": 5000
+                }
+            }
         }
     }
 }
 ```
 
-### Running Local Server
+```bash
+curl --data-binary \
+'{"dims": {
+    "country": "es",
+    "user": "bob"
+    },
+  "counters": { "counterA": 60 },
+  "increments": { "counterB": 600 },
+  "gauges": { "gaugeA": 6000 },
+  "members": { "gaugeB": "item2" }
+}' \
+"http://localhost:9000/stats/myid1"
+```
+
+```bash
+{"Succeeded":true,"Error":""}%    
+```
+
+```bash
+curl "http://localhost:9000/stats/country" | python -mjson.tool
+```
+
+```json
+{
+    "Error": "",
+    "Succeeded": true,
+    "dims": {
+        "country": {
+            "es": {
+                "counters": {
+                    "counterA": 60,
+                    "counterB": 1100
+                },
+                "gauges": {
+                    "gaugeB": 2
+                },
+                "gaugesCurrent": {
+                    "gaugeA": 6000
+                }
+            },
+            "total": {
+                "counters": {
+                    "counterA": 60,
+                    "counterB": 1100
+                },
+                "gauges": {
+                    "gaugeB": 2
+                },
+                "gaugesCurrent": {
+                    "gaugeA": 6000
+                }
+            }
+        }
+    }
+}
+```
+
+### Running a Local Server
 
 ```bash
 REDIS_ADDR=<host:port> REDIS_PASS=<password> GOOGLE_PROJECT=<project id> GOOGLE_TOKEN=<json encoded oauth config from oauther> PORT=9000 go run statshub.go

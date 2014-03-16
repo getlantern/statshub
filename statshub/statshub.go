@@ -9,12 +9,26 @@
 //
 // Example stats updates using curl against the local server:
 //
-//     curl --data-binary '{"countryCode": "es", "counter": { "mystat": 1, "myotherstat": 50 }, "gauge": {"mygauge": 78, "online": 1}}' "http://localhost:9000/stats/523523"
-//     curl --data-binary '{"countryCode": "es", "counter": { "mystat": 2, "myotherstat": 60 }, "gauge": {"mygauge": 55, "online": 1}}' "http://localhost:9000/stats/523524"
+//     curl --data-binary \
+//     '{"dims": {
+//         "country": "es",
+//         "user": "bob"
+//         },
+//       "counters": { "counterA": 50 },
+//       "increments": { "counterB": 500 },
+//       "gauges": { "gaugeA": 5000 },
+//       "members": { "gaugeB": "item1" }
+//     }' \
+//     "http://localhost:9000/stats/myid1"
 //
-// Example stats get:
+// Example stats get (for the country dimension):
 //
-//     curl -i "http://localhost:9000/stats/523523"
+//     curl -i "http://localhost:9000/stats/country"
+//
+// Example stats get (for all dimensions):
+//
+//     curl -i "http://localhost:9000/stats/"
+
 //
 package statshub
 
