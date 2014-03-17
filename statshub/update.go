@@ -8,7 +8,7 @@ import (
 )
 
 // StatsUpdate posts stats with zero, one or more dimensions.  Stats
-// include Counter (cumulative) and Gauges (point in time)
+// include Counters (cumulative) and Gauges (point in time)
 // (online/offline).
 type StatsUpdate struct {
 	Dims map[string]string `json:"dims"`
