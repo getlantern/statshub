@@ -27,6 +27,9 @@ type statWriter struct {
 	// writeDetail: writes the detail entry for the given key
 	writeDetail func(redisKey string, val interface{}) error
 
+	// expireDetail: expires the detail value (if necessary)
+	expireDetail func(redisKey string) error
+
 	// writeDim: writes the dimension entry for the given key
 	writeDim func(redisKey string, val interface{}, delta interface{}) error
 }
@@ -82,6 +85,9 @@ func (stats *StatsUpdate) writeIncrements(id string) (err error) {
 			// Detail values are simply incremented
 			return stats.conn.Send("INCRBY", redisKey, val)
 		},
+		expireDetail: func(redisKey string) error {
+			return nil
+		},
 		writeDim: func(redisKey string, val interface{}, delta interface{}) error {
 			// Rollups are simply incremented
 			return stats.conn.Send("INCRBY", redisKey, val)
@@ -97,6 +103,9 @@ func (stats *StatsUpdate) writeCounters(id string) (err error) {
 		writeDetail: func(redisKey string, val interface{}) error {
 			// Detail values are set using GETSET so that they return their old value
 			return stats.conn.Send("GETSET", redisKey, val)
+		},
+		expireDetail: func(redisKey string) error {
+			return nil
 		},
 		writeDim: func(redisKey string, val interface{}, delta interface{}) error {
 			// Rollups are incremented by the delta, which is the new value - old value of the detail
@@ -118,7 +127,9 @@ func (stats *StatsUpdate) writeGauges(id string) (err error) {
 			// Gauge keys are qualified by the current period's Unix timestamp
 			redisKey = keyForPeriod(redisKey, now)
 			// Detail values are set using GETSET so that they return their old value
-			stats.conn.Send("GETSET", redisKey, val)
+			return stats.conn.Send("GETSET", redisKey, val)
+		},
+		expireDetail: func(redisKey string) error {
 			// Detail values are expired every statsPeriod period
 			return stats.conn.Send("EXPIREAT", redisKey, expiration.Unix())
 		},
@@ -139,6 +150,9 @@ func (stats *StatsUpdate) writeMembers(id string) (err error) {
 		writeDetail: func(redisKey string, val interface{}) error {
 			// Record member in set
 			return stats.conn.Send("SADD", redisKey, val)
+		},
+		expireDetail: func(redisKey string) error {
+			return nil
 		},
 		writeDim: func(redisKey string, val interface{}, oldVal interface{}) error {
 			// Record member in set
@@ -202,6 +216,7 @@ func (stats *StatsUpdate) doWrite(
 	keyArgs[0] = fmt.Sprintf("key:%s", writer.statType)
 	i := 1
 
+	// Write detail values
 	err = iterateValues(func(key string, val interface{}) error {
 		keyArgs[i] = key
 		i++
@@ -212,6 +227,16 @@ func (stats *StatsUpdate) doWrite(
 		return
 	}
 
+	// Expire detail values
+	err = iterateValues(func(key string, val interface{}) error {
+		detailKey := redisKey(writer.statType, fmt.Sprintf("detail:%s", id), key)
+		return writer.expireDetail(detailKey)
+	})
+	if err != nil {
+		return
+	}
+
+	// Flush writes to redis
 	if err = stats.conn.Flush(); err != nil {
 		return
 	}
