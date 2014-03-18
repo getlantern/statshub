@@ -130,10 +130,13 @@ func (stats *StatsUpdate) writeGauges(id string) (err error) {
 			return stats.conn.Send("GETSET", redisKey, val)
 		},
 		expireDetail: func(redisKey string) error {
+			// Gauge keys are qualified by the current period's Unix timestamp
+			redisKey = keyForPeriod(redisKey, now)
 			// Detail values are expired every statsPeriod period
 			return stats.conn.Send("EXPIREAT", redisKey, expiration.Unix())
 		},
 		writeDim: func(redisKey string, val interface{}, delta interface{}) error {
+			// Gauge keys are qualified by the current period's Unix timestamp
 			redisKey = keyForPeriod(redisKey, now)
 			// Rollups are incremented by the delta, which is the new value - old value of the detail
 			stats.conn.Send("INCRBY", redisKey, delta)
