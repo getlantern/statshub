@@ -237,6 +237,13 @@ heroku config:set GOOGLE_PROJECT=<project id>
 heroku config:set OAUTH_CONFIG=<json encoded oauth config from oauther>
 ```
 
+You'll need to connect your git repo to Heroku first:
+
+```bash
+cd $GOPATH/src/github.com/getlantern/statshub
+git remote add heroku git@heroku.com:pure-journey-3547.git
+```
+
 To deploy:
 
 ```bash

@@ -34,6 +34,7 @@ func TestUpdateAndQuery(t *testing.T) {
 		t.Fatalf("Unable to flush db: %s", err)
 	}
 
+	// Try an update that includes dimension key "total", which shouldn't be allowed
 	update := &StatsUpdate{
 		Dims: map[string]string{
 			"country": "total",
