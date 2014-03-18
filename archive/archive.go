@@ -31,10 +31,10 @@ func Start() {
 			for {
 				nextInterval := time.Now().Truncate(archiveInterval).Add(archiveInterval)
 				waitTime := nextInterval.Sub(time.Now())
+				time.Sleep(waitTime)
 				if err := archiveToBigQuery(); err != nil {
 					log.Printf("Unable to archive to BigQuery: %s", err)
 				}
-				time.Sleep(waitTime)
 			}
 		}()
 	}
