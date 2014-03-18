@@ -88,6 +88,7 @@ func (statsTable *StatsTable) createOrUpdateSchema(dimStats map[string]*statshub
 			return
 		}
 	} else {
+		// TODO: the patch should only apply new columns, not remove old ones
 		log.Printf("Patching table schema: %s", statsTable.table.TableReference.TableId)
 		statsTable.mergeSchema(originalTable.Schema)
 
