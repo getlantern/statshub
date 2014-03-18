@@ -152,12 +152,12 @@ func (statsTable *StatsTable) insertRows(dimStats map[string]*statshub.Stats, no
 func schemaForStats(dimStats map[string]*statshub.Stats) *bigquery.TableSchema {
 	fields := make([]*bigquery.TableFieldSchema, 2)
 	fields[0] = &bigquery.TableFieldSchema{
-		Type: TIMESTAMP,
-		Name: _ts,
-	}
-	fields[1] = &bigquery.TableFieldSchema{
 		Type: STRING,
 		Name: _dim,
+	}
+	fields[1] = &bigquery.TableFieldSchema{
+		Type: TIMESTAMP,
+		Name: _ts,
 	}
 	// Build fields based on stats for total
 	dimFields := fieldsForStats(dimStats["total"])
