@@ -23,16 +23,21 @@ var (
 // Start starts a goroutine that continuously archives data at regular intervals
 // based on the archiveInterval constant.
 func Start() {
-	go func() {
-		for {
-			nextInterval := time.Now().Truncate(archiveInterval).Add(archiveInterval)
-			waitTime := nextInterval.Sub(time.Now())
-			time.Sleep(waitTime)
-			if err := archiveToBigQuery(); err != nil {
-				log.Printf("Unable to archive to BigQuery: %s", err)
+	if projectId == "" {
+		log.Println("No GOOGLE_PROJECT environment variable set, not archiving to BigQuery")
+	} else {
+		log.Printf("Archiving to BigQuery at %s", projectId)
+		go func() {
+			for {
+				nextInterval := time.Now().Truncate(archiveInterval).Add(archiveInterval)
+				waitTime := nextInterval.Sub(time.Now())
+				if err := archiveToBigQuery(); err != nil {
+					log.Printf("Unable to archive to BigQuery: %s", err)
+				}
+				time.Sleep(waitTime)
 			}
-		}
-	}()
+		}()
+	}
 }
 
 func archiveToBigQuery() error {

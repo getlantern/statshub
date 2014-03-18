@@ -5,6 +5,7 @@ import (
 	// because of this bug -
 	// https://code.google.com/p/google-api-go-client/issues/detail?id=52
 	bigquery "code.google.com/p/ox-google-api-go-client/bigquery/v2"
+	"fmt"
 	"github.com/getlantern/statshub/statshub"
 	"github.com/oxtoacart/oauther/oauth"
 	"log"
@@ -128,8 +129,10 @@ func (statsTable *StatsTable) insertRows(dimStats map[string]*statshub.Stats, no
 
 	// Set up
 	for dim, stats := range dimStats {
+		// Rows are identified by a unique InsertId to prevent duplicates for any given dim + ts
 		rows[i] = &bigquery.TableDataInsertAllRequestRows{
-			Json: rowFromStats(dim, stats, now),
+			InsertId: fmt.Sprintf("%s|%d", dim, now.Unix()),
+			Json:     rowFromStats(dim, stats, now),
 		}
 		i++
 		if i == ROWS_PER_INSERT {
