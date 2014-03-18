@@ -25,6 +25,8 @@ const (
 	gauge     = "gauge"
 	_ts       = "_ts"
 	_dim      = "_dim"
+
+	ROWS_PER_INSERT = 1000
 )
 
 // StatsTable is a table that holds statistics from statshub
@@ -120,7 +122,7 @@ func (statsTable *StatsTable) insertRows(dimStats map[string]*statshub.Stats, no
 		return nil
 	}
 
-	rows := make([]*bigquery.TableDataInsertAllRequestRows, 1000)
+	rows := make([]*bigquery.TableDataInsertAllRequestRows, ROWS_PER_INSERT)
 	i := 0
 
 	// Set up
@@ -129,7 +131,7 @@ func (statsTable *StatsTable) insertRows(dimStats map[string]*statshub.Stats, no
 			Json: rowFromStats(dim, stats, now),
 		}
 		i++
-		if i == 1000 {
+		if i == ROWS_PER_INSERT {
 			// To deal with rate limiting, insert every 1000 rows
 			if err := doInsert(rows); err != nil {
 				return err
