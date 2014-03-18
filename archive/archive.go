@@ -17,7 +17,7 @@ const (
 var (
 	projectId = os.Getenv(GOOGLE_PROJECT)
 
-	archivedDimensions = []string{"country", "fallback"}
+	archivedDimensions = []string{"country", "user", "fallback"}
 )
 
 // Start starts a goroutine that continuously archives data at regular intervals

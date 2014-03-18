@@ -19,10 +19,12 @@ const (
 	TIMESTAMP = "TIMESTAMP"
 	RECORD    = "RECORD"
 	INTEGER   = "INTEGER"
+	STRING    = "STRING"
 	global    = "global"
 	counter   = "counter"
 	gauge     = "gauge"
-	ts        = "_ts"
+	_ts       = "_ts"
+	_dim      = "_dim"
 )
 
 // StatsTable is a table that holds statistics from statshub
@@ -62,21 +64,7 @@ func (statsTable *StatsTable) WriteStats(dimStats map[string]*statshub.Stats, no
 	if err = statsTable.createOrUpdateSchema(dimStats); err != nil {
 		return
 	}
-	insertRequest := &bigquery.TableDataInsertAllRequest{
-		Rows: []*bigquery.TableDataInsertAllRequestRows{
-			&bigquery.TableDataInsertAllRequestRows{
-				Json: rowFromStats(dimStats, now),
-			},
-		},
-	}
-	_, err = statsTable.tabledata.InsertAll(
-		statsTable.table.TableReference.ProjectId,
-		statsTable.table.TableReference.DatasetId,
-		statsTable.table.TableReference.TableId,
-		insertRequest).Do()
-	if err == nil {
-		log.Printf("Inserted new row into: %s", statsTable.table.TableReference.TableId)
-	}
+	err = statsTable.insertRows(dimStats, now)
 	return
 }
 
@@ -118,33 +106,61 @@ func (statsTable *StatsTable) mergeSchema(schema *bigquery.TableSchema) {
 	statsTable.table.Schema.Fields = consolidateFields(statsTable.table.Schema.Fields, schema.Fields)
 }
 
-func schemaForStats(dimStats map[string]*statshub.Stats) *bigquery.TableSchema {
-	fields := make([]*bigquery.TableFieldSchema, 1)
-	fields[0] = &bigquery.TableFieldSchema{
-		Type: TIMESTAMP,
-		Name: ts,
-	}
-	dimKeys := make([]string, len(dimStats))
-	if len(dimKeys) > 0 {
-		i := 0
-		for key, _ := range dimStats {
-			dimKeys[i] = key
-			i++
+func (statsTable *StatsTable) insertRows(dimStats map[string]*statshub.Stats, now time.Time) error {
+	doInsert := func(rows []*bigquery.TableDataInsertAllRequestRows) error {
+		insertRequest := &bigquery.TableDataInsertAllRequest{Rows: rows}
+		_, err := statsTable.tabledata.InsertAll(
+			statsTable.table.TableReference.ProjectId,
+			statsTable.table.TableReference.DatasetId,
+			statsTable.table.TableReference.TableId,
+			insertRequest).Do()
+		if err == nil {
+			log.Printf("Inserted %d rows into: %s", len(rows), statsTable.table.TableReference.TableId)
 		}
-		// Sort dim keys alphabetically
-		sort.Strings(dimKeys)
-		for _, dimKey := range dimKeys {
-			dimFields := fieldsForStats(dimStats[dimKey])
-			if len(dimFields) > 0 {
-				fields = append(fields, &bigquery.TableFieldSchema{
-					Type:   RECORD,
-					Name:   dimKey,
-					Fields: dimFields,
-				})
+		return nil
+	}
+
+	rows := make([]*bigquery.TableDataInsertAllRequestRows, 1000)
+	i := 0
+
+	// Set up
+	for dim, stats := range dimStats {
+		rows[i] = &bigquery.TableDataInsertAllRequestRows{
+			Json: rowFromStats(dim, stats, now),
+		}
+		i++
+		if i == 1000 {
+			// To deal with rate limiting, insert every 1000 rows
+			if err := doInsert(rows); err != nil {
+				return err
 			}
+			i = 0
 		}
 	}
 
+	if i != 0 {
+		// Insert the remaining rows
+		return doInsert(rows[0:i])
+	} else {
+		return nil
+	}
+}
+
+func schemaForStats(dimStats map[string]*statshub.Stats) *bigquery.TableSchema {
+	fields := make([]*bigquery.TableFieldSchema, 2)
+	fields[0] = &bigquery.TableFieldSchema{
+		Type: TIMESTAMP,
+		Name: _ts,
+	}
+	fields[1] = &bigquery.TableFieldSchema{
+		Type: STRING,
+		Name: _dim,
+	}
+	// Build fields based on stats for total
+	dimFields := fieldsForStats(dimStats["total"])
+	for _, dimField := range dimFields {
+		fields = append(fields, dimField)
+	}
 	return &bigquery.TableSchema{
 		Fields: fields,
 	}
@@ -225,17 +241,15 @@ func consolidateFields(a []*bigquery.TableFieldSchema, b []*bigquery.TableFieldS
 	return
 }
 
-func rowFromStats(dimStats map[string]*statshub.Stats, now time.Time) (row map[string]interface{}) {
-	row = make(map[string]interface{})
-	row[ts] = now.Unix()
-	for dimKey, stats := range dimStats {
-		row[dimKey] = statsAsMap(stats)
-	}
+func rowFromStats(dim string, stats *statshub.Stats, now time.Time) (row map[string]interface{}) {
+	row = statsAsMap(stats)
+	row[_ts] = now.Unix()
+	row[_dim] = dim
 	return
 }
 
-func statsAsMap(stats *statshub.Stats) (m map[string]map[string]int64) {
-	m = make(map[string]map[string]int64)
+func statsAsMap(stats *statshub.Stats) (m map[string]interface{}) {
+	m = make(map[string]interface{})
 	m[counter] = stats.Counters
 	m[gauge] = stats.Gauges
 	return
