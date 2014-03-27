@@ -236,7 +236,7 @@ func (stats *StatsUpdate) doWrite(
 
 	// Write detail values
 	err = iterateValues(func(key string, val interface{}) error {
-		keyArgs[i] = key
+		keyArgs[i] = removeDashes(key)
 		i++
 		detailKey := redisKey(writer.statType, fmt.Sprintf("detail:%s", id), key)
 		return writer.writeDetail(detailKey, val)

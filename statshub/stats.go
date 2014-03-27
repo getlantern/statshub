@@ -91,11 +91,13 @@ func fromRedisVal(redisVal interface{}) (val int64, found bool, err error) {
 // group (e.g. country:es) and key (e.g. mystat).  Dashes are replaced
 // by underscores.
 func redisKey(statType string, group string, key interface{}) string {
-	return strings.Replace(
-		fmt.Sprintf("%s:%s:%s", statType, group, key),
-		"-",
-		"_",
-		-1)
+	return removeDashes(fmt.Sprintf("%s:%s:%s", statType, group, key))
+}
+
+// removeDashes removes dashes from a string and replaces them with
+// underscores
+func removeDashes(val string) string {
+	return strings.Replace(val, "-", "_", -1)
 }
 
 // listStatKeys lists all keys (e.g. mystat) for stats of the given type
