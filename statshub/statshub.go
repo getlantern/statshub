@@ -132,10 +132,8 @@ func getStats(r *http.Request, dim string) (statusCode int, resp interface{}, er
 		Response: Response{Succeeded: true},
 	}
 
-	var dimNames []string = nil
-	if dim != "" {
-		dimNames = []string{dim}
-	}
+	dimNames := dimNamesFor(dim)
+
 	if clientResp.Dims, err = QueryDims(dimNames); err != nil {
 		return 500, nil, fmt.Errorf("Unable to query stats: %s", err)
 	}
@@ -153,6 +151,14 @@ func extractid(r *http.Request) (id string, err error) {
 		id = r.URL.Path[lastSlash+1:]
 	}
 	return
+}
+
+func dimNamesFor(dim string) []string {
+	if dim != "" {
+		return []string{dim}
+	} else {
+		return nil
+	}
 }
 
 func fail(w http.ResponseWriter, statusCode int, err error) {
