@@ -19,6 +19,7 @@ import (
 	"code.google.com/p/go.net/websocket"
 	"encoding/json"
 	"fmt"
+	"github.com/oxtoacart/go-ringbuffer/ringbuff"
 	"io"
 	"log"
 	"net/http"
@@ -35,6 +36,8 @@ var (
 	streamingClients      = make(map[int]*streamingClient)
 	newStreamingClient    = make(chan *streamingClient)
 	closedStreamingClient = make(chan int)
+	updatesCacheSize      = 1 * 60 * 60 / int(streamingInterval.Seconds()) // 1 hour worth of updates
+	oldUpdates            = ringbuff.New(updatesCacheSize)
 )
 
 type streamingClient struct {
@@ -51,70 +54,13 @@ type streamingUpdate struct {
 // ClientQueryResponse is a Response to a StatsQuery
 type StreamingQueryResponse struct {
 	Response
-	AsOfMillis int64                       `json:"asOfMillis"`
-	Dims       map[string]*json.RawMessage `json:"dims"`
+	AsOfSeconds int64                       `json:"asOfSeconds"`
+	Dims        map[string]*json.RawMessage `json:"dims"`
 }
 
 func init() {
 	http.Handle("/stream/", websocket.Handler(streamStats))
 	go handleStreamingClients()
-}
-
-// streamStats streams stats over a websocket
-func streamStats(ws *websocket.Conn) {
-	log.Println("Client connected")
-	dim, err := extractid(ws.Request())
-	if err != nil {
-		data, err := json.Marshal(&Response{Succeeded: false, Error: fmt.Sprintf("Unable to extract id from request: %s", err)})
-		if err == nil {
-			ws.Write(data)
-		}
-		return
-	}
-
-	dimNames := dimNamesFor(dim)
-
-	client := &streamingClient{ws: ws, updates: make(chan *streamingUpdate), id: make(chan int)}
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		id := <-client.id
-		for {
-			// This gets data for all dims
-			update := <-client.updates
-			dims := update.allDims
-			if dimNames != nil {
-				// Grab only the dimensions that this client is interested in
-				dims = make(map[string]*json.RawMessage)
-				for _, name := range dimNames {
-					dims[name] = update.allDims[name]
-				}
-			}
-			resp := &StreamingQueryResponse{AsOfMillis: update.asOf.Unix(), Dims: dims}
-			encoded, err := json.Marshal(resp)
-			if err != nil {
-				log.Printf("Unable to marshal json: %s", err)
-			} else {
-				_, err = ws.Write(encoded)
-				if err != nil {
-					if err == io.EOF {
-						log.Println("Closing client")
-						// Close client
-						closedStreamingClient <- id
-						ws.Close()
-						wg.Done()
-						return
-					} else {
-						log.Printf("Unable to write to websocket: %s", err)
-					}
-				}
-			}
-		}
-	}()
-
-	newStreamingClient <- client
-	wg.Wait()
 }
 
 // handleStreamingClients handles streaming updates to subscribed streaming clients
@@ -128,11 +74,18 @@ func handleStreamingClients() {
 			nextStreamingClientId++
 			streamingClients[nextStreamingClientId] = client
 			client.id <- nextStreamingClientId
+
+			// Send buffered updates to client
+			oldUpdates.ForEach(func(item interface{}) {
+				update := item.(*streamingUpdate)
+				for _, client := range streamingClients {
+					client.updates <- update
+				}
+			})
 		case closedId := <-closedStreamingClient:
 			// Remove disconnected client from map
 			delete(streamingClients, closedId)
 		case <-time.After(waitTime):
-			log.Println("Querying dims")
 			// Query fallback and country dims
 			dims, err := QueryDims([]string{"fallback", "country"})
 			if err != nil {
@@ -153,10 +106,73 @@ func handleStreamingClients() {
 				// Publish update to clients
 				update := &streamingUpdate{asOf: nextInterval, allDims: jsonDims}
 				for _, client := range streamingClients {
-					log.Println("Publishing to client")
 					client.updates <- update
 				}
+
+				// Remember update
+				oldUpdates.Add(update)
 			}
 		}
 	}
+}
+
+// streamStats streams stats over a websocket
+func streamStats(ws *websocket.Conn) {
+	dim, err := extractid(ws.Request())
+	if err != nil {
+		data, err := json.Marshal(&Response{Succeeded: false, Error: fmt.Sprintf("Unable to extract id from request: %s", err)})
+		if err == nil {
+			ws.Write(data)
+		}
+		return
+	}
+
+	dimNames := dimNamesFor(dim)
+
+	client := &streamingClient{ws: ws, updates: make(chan *streamingUpdate, updatesCacheSize*2), id: make(chan int)}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	// Write updates to the client
+	go func() {
+		for {
+			// This gets data for all dims
+			update := <-client.updates
+			dims := update.allDims
+			if dimNames != nil {
+				// Grab only the dimensions that this client is interested in
+				dims = make(map[string]*json.RawMessage)
+				for _, name := range dimNames {
+					dims[name] = update.allDims[name]
+				}
+			}
+			resp := &StreamingQueryResponse{Response: Response{Succeeded: true}, AsOfSeconds: update.asOf.Unix(), Dims: dims}
+			encoded, err := json.Marshal(resp)
+			if err != nil {
+				log.Printf("Unable to marshal json: %s", err)
+			} else {
+				ws.Write(encoded)
+			}
+		}
+	}()
+
+	// Read from the client (we don't expect to get anything, but this allows us
+	// to check for closed connections)
+	go func() {
+		id := <-client.id
+		msg := make([]byte, 1)
+		for {
+			_, err := ws.Read(msg)
+			if err == io.EOF {
+				closedStreamingClient <- id
+				ws.Close()
+				wg.Done()
+				return
+			}
+		}
+	}()
+
+	newStreamingClient <- client
+	wg.Wait()
 }

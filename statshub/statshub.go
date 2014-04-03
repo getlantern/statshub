@@ -41,8 +41,8 @@ type ClientQueryResponse struct {
 
 // Response is a response to a stats request (update or query)
 type Response struct {
-	Succeeded bool
-	Error     string
+	Succeeded bool   `json:"succeeded"`
+	Error     string `json:"error"`
 }
 
 func init() {
