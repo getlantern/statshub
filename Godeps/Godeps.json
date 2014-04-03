@@ -1,7 +1,12 @@
 {
 	"ImportPath": "github.com/getlantern/statshub",
-	"GoVersion": "go1.2",
+	"GoVersion": "go1.2.1",
 	"Deps": [
+		{
+			"ImportPath": "code.google.com/p/go.net/websocket",
+			"Comment": "null-117",
+			"Rev": "c17ad62118ea511e1051721b429779fa40bddc74"
+		},
 		{
 			"ImportPath": "code.google.com/p/goauth2/oauth",
 			"Comment": "weekly-43",
@@ -20,6 +25,10 @@
 		{
 			"ImportPath": "github.com/garyburd/redigo/redis",
 			"Rev": "a470367e65a4a6986739b387f0e0aaa034d55466"
+		},
+		{
+			"ImportPath": "github.com/oxtoacart/go-ringbuffer/ringbuff",
+			"Rev": "34c72eaa3617aa0983e3ab9648da1bc1b336f0ee"
 		},
 		{
 			"ImportPath": "github.com/oxtoacart/oauther/oauth",
