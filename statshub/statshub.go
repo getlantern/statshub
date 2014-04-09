@@ -113,9 +113,9 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 
 func cacheCountries() {
 	queryCountries()
-	nextInterval := time.Now().Truncate(cacheExpiration).Add(cacheExpiration)
-	waitTime := nextInterval.Sub(time.Now())
 	for {
+		nextInterval := time.Now().Truncate(cacheExpiration).Add(cacheExpiration)
+		waitTime := nextInterval.Sub(time.Now())
 		select {
 		case req := <-countryStatsRequest:
 			if countriesCached {
