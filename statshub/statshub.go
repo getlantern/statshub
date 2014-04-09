@@ -18,7 +18,6 @@ package statshub
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/getlantern/statshub/cache"
 	"log"
 	"net/http"
 	"strings"
@@ -30,7 +29,9 @@ const (
 )
 
 var (
-	queryCache = cache.NewCache()
+	countriesCached     bool
+	countryStats        []byte
+	countryStatsRequest = make(chan chan []byte, 1000)
 )
 
 // ClientQueryResponse is a Response to a StatsQuery
@@ -47,6 +48,7 @@ type Response struct {
 
 func init() {
 	http.HandleFunc("/stats/", statsHandler)
+	go cacheCountries()
 }
 
 // statsHandler handles requests to /stats
@@ -78,18 +80,20 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		requestedCountryStats := path == "/stats/country" || path == "/stats/country/"
 		if requestedCountryStats {
-			cached := queryCache.Get()
-			if cached != nil {
+			countryResponse := make(chan []byte)
+			countryStatsRequest <- countryResponse
+			cached := <-countryResponse
+			if cached == nil {
+				fail(w, 500, fmt.Errorf("No countries cached"))
+			} else {
 				w.WriteHeader(200)
 				w.Write(cached)
 				return
-			} else {
-				log.Printf("Countries not found in cache, querying")
 			}
 		} else {
 			log.Printf("Not using cache for path: %s", path)
 		}
-		statusCode, resp, err := getStats(r, id)
+		statusCode, resp, err := getStats(id)
 		if err != nil {
 			fail(w, statusCode, err)
 		} else {
@@ -97,9 +101,6 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 			bytes, err := json.Marshal(resp)
 			if err == nil {
 				w.Write(bytes)
-				if requestedCountryStats {
-					queryCache.Set(bytes, cacheExpiration)
-				}
 			} else {
 				log.Printf("Unable to respond to client: %s", err)
 			}
@@ -107,6 +108,42 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		log.Printf("Query: %s", r.URL.Query())
 		w.WriteHeader(405)
+	}
+}
+
+func cacheCountries() {
+	queryCountries()
+	nextInterval := time.Now().Truncate(cacheExpiration).Add(cacheExpiration)
+	waitTime := nextInterval.Sub(time.Now())
+	for {
+		select {
+		case req := <-countryStatsRequest:
+			if countriesCached {
+				req <- countryStats
+			} else {
+				req <- nil
+			}
+		case <-time.After(waitTime):
+			queryCountries()
+		}
+	}
+}
+
+func queryCountries() {
+	log.Printf("Querying countries for cache")
+	_, resp, err := getStats("country")
+	if err != nil {
+		log.Printf("Unable to cache countries: %s", err)
+		countriesCached = false
+	} else {
+		bytes, err := json.Marshal(resp)
+		if err == nil {
+			countryStats = bytes
+			countriesCached = true
+		} else {
+			countriesCached = false
+			log.Printf("Unable to cache countries: %s", err)
+		}
 	}
 }
 
@@ -129,7 +166,7 @@ func postStats(r *http.Request, id string) (statusCode int, resp interface{}, er
 }
 
 // getStats handles a GET request to /stats
-func getStats(r *http.Request, dim string) (statusCode int, resp interface{}, err error) {
+func getStats(dim string) (statusCode int, resp interface{}, err error) {
 	clientResp := &ClientQueryResponse{
 		Response: Response{Succeeded: true},
 	}
