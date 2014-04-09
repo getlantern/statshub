@@ -86,6 +86,8 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 			} else {
 				log.Printf("Countries not found in cache, querying")
 			}
+		} else {
+			log.Printf("Not using cache")
 		}
 		statusCode, resp, err := getStats(r, id)
 		if err != nil {
