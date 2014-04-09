@@ -76,7 +76,7 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 		// check cache
 		// TODO: should probably cache more than just the 1 url
 		path := r.URL.Path
-		requestedCountryStats := path == "/stats/country"
+		requestedCountryStats := path == "/stats/country" || path == "/stats/country/"
 		if requestedCountryStats {
 			cached := queryCache.Get()
 			if cached != nil {
