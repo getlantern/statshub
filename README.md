@@ -70,7 +70,7 @@ populates one table per dimension inside this dataset.
 
 This example session submits and queries stats for the ids "myid1" and "myid2".
 
-Here we are submitting and querying stats for the id 523523.
+Here we are submitting and querying stats for the id myid1.
 
 #### Update
 ```bash
@@ -89,7 +89,7 @@ curl --data-binary \
 
 #### Response
 ```bash
-{"Succeeded":true,"Error":""}%    
+{"Succeeded":true,"Error":""}    
 ```
 
 #### Query
@@ -171,12 +171,12 @@ curl --data-binary \
   "gauges": { "gaugeA": 6000 },
   "members": { "gaugeB": "item2" }
 }' \
-"http://localhost:9000/stats/myid1"
+"http://localhost:9000/stats/myid2"
 ```
 
 #### Response
 ```bash
-{"Succeeded":true,"Error":""}%    
+{"Succeeded":true,"Error":""}  
 ```
 
 #### Query
