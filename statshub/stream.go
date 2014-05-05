@@ -36,7 +36,7 @@ var (
 	streamingClients      = make(map[int]*streamingClient)
 	newStreamingClient    = make(chan *streamingClient)
 	closedStreamingClient = make(chan int)
-	updatesCacheSize      = 1 * 60 * 60 / int(streamingInterval.Seconds()) // 1 hour worth of updates
+	updatesCacheSize      = 1 * 24 * 2 / int(streamingInterval.Seconds()) // 1 day worth of updates at 30 minute intervals
 	oldUpdates            = ringbuff.New(updatesCacheSize)
 )
 
@@ -109,8 +109,10 @@ func handleStreamingClients() {
 					client.updates <- update
 				}
 
-				// Remember update
-				oldUpdates.Add(update)
+				// Remember updates at 30 minute intervals
+				if update.asOf.UnixNano()%(30*time.Minute).Nanoseconds() == 0 {
+					oldUpdates.Add(update)
+				}
 			}
 		}
 	}
