@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"log"
+	"sort"
 	"strings"
 	"time"
 )
@@ -196,7 +197,18 @@ func (stats *StatsUpdate) doWriteInt(
 		len(values),
 		writer,
 		func(reportVal func(key string, val interface{}) error) error {
-			for key, val := range values {
+			// Iterate over keys in alphabetical order for consistent ordering
+			// between detail updates and corresponding rollups
+			keys := make([]string, len(values))
+			i := 0
+			for key, _ := range values {
+				keys[i] = key
+				i += 1
+			}
+			sort.Strings(keys)
+
+			for _, key := range keys {
+				val := values[key]
 				reportVal(key, val)
 			}
 			return nil
@@ -213,7 +225,18 @@ func (stats *StatsUpdate) doWriteString(
 		len(values),
 		writer,
 		func(reportVal func(key string, val interface{}) error) error {
-			for key, val := range values {
+			// Iterate over keys in alphabetical order for consistent ordering
+			// between detail updates and corresponding rollups
+			keys := make([]string, len(values))
+			i := 0
+			for key, _ := range values {
+				keys[i] = key
+				i += 1
+			}
+			sort.Strings(keys)
+
+			for _, key := range keys {
+				val := values[key]
 				reportVal(key, val)
 			}
 			return nil
