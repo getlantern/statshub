@@ -18,6 +18,7 @@ package statshub
 import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
+	"log"
 	"strings"
 	"time"
 )
@@ -141,6 +142,9 @@ func (stats *StatsUpdate) writeGauges(id string) (err error) {
 		writeDetail: func(redisKey string, val interface{}) error {
 			// Gauge keys are qualified by the current period's Unix timestamp
 			redisKey = keyForPeriod(redisKey, now)
+			if strings.Index(redisKey, "fp_ox_at_getlantern_dot_org_c336_1_2014_4_17") >= 0 {
+				log.Printf("Recording %s: %d", redisKey, val)
+			}
 			// Detail values are set using GETSET so that they return their old value
 			return stats.conn.Send("GETSET", redisKey, val)
 		},
@@ -153,6 +157,9 @@ func (stats *StatsUpdate) writeGauges(id string) (err error) {
 		writeDim: func(redisKey string, val interface{}, delta interface{}) error {
 			// Gauge keys are qualified by the current period's Unix timestamp
 			redisKey = keyForPeriod(redisKey, now)
+			if strings.Index(redisKey, "fp_ox_at_getlantern_dot_org_c336_1_2014_4_17") >= 0 {
+				log.Printf("Recording %s: %d", redisKey, delta)
+			}
 			// Rollups are incremented by the delta, which is the new value - old value of the detail
 			stats.conn.Send("INCRBY", redisKey, delta)
 			// Rollups are expired every statsPeriod period
