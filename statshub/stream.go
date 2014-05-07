@@ -75,8 +75,6 @@ func handleStreamingClients() {
 			streamingClients[nextStreamingClientId] = client
 			client.id <- nextStreamingClientId
 
-			log.Printf("Buffered updates count: %d", oldUpdates.Size())
-
 			// Send buffered updates to client
 			oldUpdates.ForEach(func(item interface{}) {
 				update := item.(*streamingUpdate)
@@ -110,7 +108,7 @@ func handleStreamingClients() {
 				}
 
 				// Remember updates at 30 minute intervals
-				if update.asOf.Truncate(15*time.Second) == update.asOf {
+				if update.asOf.Truncate(30*time.Minute) == update.asOf {
 					log.Printf("Snapshotting streaming stats at %s", update.asOf)
 					oldUpdates.Add(update)
 				}
