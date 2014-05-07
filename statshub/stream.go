@@ -110,7 +110,7 @@ func handleStreamingClients() {
 				}
 
 				// Remember updates at 30 minute intervals
-				if update.asOf.UnixNano()%(30*time.Minute).Nanoseconds() == 0 {
+				if update.asOf.Truncate(30*time.Seconds) == update.asOf {
 					log.Printf("Snapshotting streaming stats at %s", update.asOf)
 					oldUpdates.Add(update)
 				}
