@@ -110,7 +110,7 @@ func handleStreamingClients() {
 				}
 
 				// Remember updates at 30 minute intervals
-				if update.asOf.Truncate(30*time.Seconds) == update.asOf {
+				if update.asOf.Truncate(30*time.Second) == update.asOf {
 					log.Printf("Snapshotting streaming stats at %s", update.asOf)
 					oldUpdates.Add(update)
 				}
