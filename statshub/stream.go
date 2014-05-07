@@ -78,6 +78,7 @@ func handleStreamingClients() {
 			// Send buffered updates to client
 			oldUpdates.ForEach(func(item interface{}) {
 				update := item.(*streamingUpdate)
+				log.Printf("Sending buffered update as of: %s", update.asOf)
 				for _, client := range streamingClients {
 					client.updates <- update
 				}
@@ -110,7 +111,7 @@ func handleStreamingClients() {
 				}
 
 				// Remember updates at 30 minute intervals
-				if update.asOf.Truncate(30*time.Second) == update.asOf {
+				if update.asOf.Truncate(15*time.Second) == update.asOf {
 					log.Printf("Snapshotting streaming stats at %s", update.asOf)
 					oldUpdates.Add(update)
 				}
