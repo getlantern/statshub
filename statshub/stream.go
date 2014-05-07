@@ -79,9 +79,9 @@ func handleStreamingClients() {
 			oldUpdates.ForEach(func(item interface{}) {
 				update := item.(*streamingUpdate)
 				log.Printf("Sending buffered update as of: %s", update.asOf)
-				for _, client := range streamingClients {
-					client.updates <- update
-				}
+				// for _, client := range streamingClients {
+				// 	client.updates <- update
+				// }
 			})
 		case closedId := <-closedStreamingClient:
 			// Remove disconnected client from map
