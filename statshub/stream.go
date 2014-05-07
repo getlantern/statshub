@@ -36,7 +36,7 @@ var (
 	streamingClients      = make(map[int]*streamingClient)
 	newStreamingClient    = make(chan *streamingClient)
 	closedStreamingClient = make(chan int)
-	updatesCacheSize      = 1 * 24 * 2 / int(streamingInterval.Seconds()) // 1 day worth of updates at 30 minute intervals
+	updatesCacheSize      = 1 * 24 * 2 // 1 day worth of updates at 30 minute intervals
 	oldUpdates            = ringbuff.New(updatesCacheSize)
 )
 
@@ -80,10 +80,7 @@ func handleStreamingClients() {
 			// Send buffered updates to client
 			oldUpdates.ForEach(func(item interface{}) {
 				update := item.(*streamingUpdate)
-				log.Printf("Sending buffered update as of: %s", update.asOf)
-				// for _, client := range streamingClients {
-				// 	client.updates <- update
-				// }
+				client.updates <- update
 			})
 		case closedId := <-closedStreamingClient:
 			// Remove disconnected client from map
