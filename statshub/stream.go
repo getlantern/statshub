@@ -75,6 +75,8 @@ func handleStreamingClients() {
 			streamingClients[nextStreamingClientId] = client
 			client.id <- nextStreamingClientId
 
+			log.Printf("Buffered updates count: %d", oldUpdates.Size())
+
 			// Send buffered updates to client
 			oldUpdates.ForEach(func(item interface{}) {
 				update := item.(*streamingUpdate)
