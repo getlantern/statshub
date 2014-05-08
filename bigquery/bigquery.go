@@ -15,16 +15,24 @@
 package bigquery
 
 import (
-	"github.com/getlantern/statshub/statshub"
 	"log"
 	"os"
 	"strings"
 	"time"
+
+	// Note - I'm using a patched version of the google-api-go-client library
+	// because of this bug -
+	// https://code.google.com/p/google-api-go-client/issues/detail?id=52
+	bigquery "code.google.com/p/ox-google-api-go-client/bigquery/v2"
+
+	"github.com/getlantern/statshub/statshub"
+	"github.com/oxtoacart/oauther/oauth"
 )
 
 const (
 	ARCHIVE_TO_BIGQUERY = "ARCHIVE_TO_BIGQUERY"
 	GOOGLE_PROJECT      = "GOOGLE_PROJECT"
+	OAUTH_CONFIG        = "OAUTH_CONFIG"
 
 	datasetId = "statshub"
 )
@@ -78,4 +86,14 @@ func archiveToBigQuery(dim string, interval time.Duration) error {
 		}
 		return nil
 	}
+}
+
+func connect() (service *bigquery.Service, err error) {
+	var oauther *oauth.OAuther
+	oauther, err = oauth.FromJSON([]byte(os.Getenv(OAUTH_CONFIG)))
+	if err != nil {
+		return
+	}
+	service, err = bigquery.New(oauther.Transport().Client())
+	return
 }

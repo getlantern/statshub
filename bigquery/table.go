@@ -15,22 +15,20 @@
 package bigquery
 
 import (
+	"fmt"
+	"log"
+	"sort"
+	"time"
+
 	// Note - I'm using a patched version of the google-api-go-client library
 	// because of this bug -
 	// https://code.google.com/p/google-api-go-client/issues/detail?id=52
 	bigquery "code.google.com/p/ox-google-api-go-client/bigquery/v2"
-	"fmt"
+
 	"github.com/getlantern/statshub/statshub"
-	"github.com/oxtoacart/oauther/oauth"
-	"log"
-	"os"
-	"sort"
-	"time"
 )
 
 const (
-	OAUTH_CONFIG = "OAUTH_CONFIG"
-
 	TIMESTAMP = "TIMESTAMP"
 	RECORD    = "RECORD"
 	INTEGER   = "INTEGER"
@@ -63,10 +61,7 @@ func NewStatsTable(projectId string, datasetId string, tableId string) (statsTab
 			},
 		},
 	}
-	var oauther *oauth.OAuther
-	if oauther, err = oauth.FromJSON([]byte(os.Getenv(OAUTH_CONFIG))); err != nil {
-		return
-	} else if statsTable.service, err = bigquery.New(oauther.Transport().Client()); err != nil {
+	if statsTable.service, err = connect(); err != nil {
 		return
 	} else {
 		statsTable.tables = bigquery.NewTablesService(statsTable.service)
