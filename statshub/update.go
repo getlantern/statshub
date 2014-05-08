@@ -18,7 +18,6 @@ package statshub
 import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
-	"log"
 	"sort"
 	"strings"
 	"time"
