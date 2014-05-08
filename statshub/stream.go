@@ -140,6 +140,7 @@ func streamStats(ws *websocket.Conn) {
 		}
 		return
 	}
+
 	client := &streamingClient{
 		ws:       ws,
 		updates:  make(chan *streamingUpdate, 100),
@@ -189,6 +190,7 @@ func (client *streamingClient) loadHistory() {
 	intervals = client.loadHistoryForRange(intervals, ONE_DAY, ONE_DAY, ONE_WEEK)
 	// Hourly figures for the last 1 day
 	intervals = client.loadHistoryForRange(intervals, ONE_HOUR, 0, ONE_DAY)
+
 	resp := &StreamingQueryResponse{
 		Response:  Response{Succeeded: true},
 		Intervals: intervals,
@@ -202,6 +204,7 @@ func (client *streamingClient) loadHistoryForRange(
 	intervalInSeconds int,
 	startOffsetInDays int,
 	endOffsetInDays int) []StreamingQueryResponseInterval {
+
 	additionalWhereClause := ""
 	if client.dimKey != ANY {
 		additionalWhereClause = fmt.Sprintf(DIM_WHERE_TEMPL, client.dimKey)
@@ -224,29 +227,34 @@ func (client *streamingClient) loadHistoryForRange(
 	}
 
 	if len(rows) > 0 {
-		lastAsOf := 0
+		lastCutoff := int64(0) // will cause first row to be seen as a new cutoff
 		var interval StreamingQueryResponseInterval
-		for r := 0; r < len(rows); r++ {
-			row := rows[r]
-			asOf, err := strconv.Atoi(row[0].(string))
+		for _, row := range rows {
+			cutoff, err := strconv.ParseInt(row[0].(string), 10, 64)
 			if err != nil {
-				log.Printf("Unable to read asOf %s: %s", row[0], err)
+				log.Printf("Unable to read cutoff %s: %s", row[0], err)
 				return intervals
 			}
-			if asOf != lastAsOf {
+			if cutoff != lastCutoff {
 				// Start a new interval
-				interval = StreamingQueryResponseInterval{int64(asOf) * int64(intervalInSeconds), make(map[string]int64)}
+				asOf := cutoff * int64(intervalInSeconds)
+				interval = StreamingQueryResponseInterval{asOf, make(map[string]int64)}
 				intervals = append(intervals, interval)
 			}
-			lastAsOf = asOf
+			lastCutoff = cutoff
 
 			dim := row[1].(string)
-			value, err := strconv.Atoi(row[2].(string))
-			if err != nil {
-				log.Printf("Unable to read value %s: %s", row[2], err)
-				return intervals
+
+			value := int64(0)
+			valueIf := row[2]
+			if valueIf != nil {
+				value, err = strconv.ParseInt(valueIf.(string), 10, 64)
+				if err != nil {
+					log.Printf("Unable to read value %s: %s", row[2], err)
+					return intervals
+				}
 			}
-			interval.Values[dim] = int64(value)
+			interval.Values[dim] = value
 		}
 	}
 

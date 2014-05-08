@@ -61,7 +61,7 @@ func receive(conn redis.Conn) (val int64, found bool, err error) {
 	return
 }
 
-// fromRedisVale converts a value received from redis into an int64.
+// fromRedisVal converts a value received from redis into an int64.
 // If there was no value found in redis, found will equal false.
 func fromRedisVal(redisVal interface{}) (val int64, found bool, err error) {
 	if redisVal == nil {
@@ -71,13 +71,7 @@ func fromRedisVal(redisVal interface{}) (val int64, found bool, err error) {
 		switch v := redisVal.(type) {
 		case []uint8:
 			valString := string(v)
-			var intVal int
-			intVal, err = strconv.Atoi(valString)
-			if err != nil {
-				return
-			} else {
-				val = int64(intVal)
-			}
+			val, err = strconv.ParseInt(valString, 10, 64)
 		case int64:
 			val = v
 		default:
