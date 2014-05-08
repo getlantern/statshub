@@ -233,6 +233,7 @@ Need to configure the Redis address and password only once (these are persistent
 ```bash
 heroku config:set REDIS_ADDR=<host:port>
 heroku config:set REDIS_PASS=mR0bKNfhlxoKIHqnBA53
+heroku config:set ARCHIVE_TO_BIGQUERY=true
 heroku config:set GOOGLE_PROJECT=<project id>
 heroku config:set OAUTH_CONFIG=<json encoded oauth config from oauther>
 ```

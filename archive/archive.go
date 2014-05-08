@@ -18,16 +18,20 @@ import (
 	"github.com/getlantern/statshub/statshub"
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
 const (
-	GOOGLE_PROJECT = "GOOGLE_PROJECT"
+	ARCHIVE_TO_BIGQUERY = "ARCHIVE_TO_BIGQUERY"
+	GOOGLE_PROJECT      = "GOOGLE_PROJECT"
 
 	datasetId = "statshub"
 )
 
 var (
+	shouldArchive = strings.ToLower(os.Getenv(ARCHIVE_TO_BIGQUERY)) == "true"
+
 	projectId = os.Getenv(GOOGLE_PROJECT)
 
 	frequentlyArchivedDimensions = []string{"country", "user", "fallback"}
@@ -38,13 +42,13 @@ var (
 // Start starts a goroutine that continuously archives data at regular intervals
 // based on the archiveInterval constant.
 func Start() {
-	if projectId == "" {
-		log.Println("No GOOGLE_PROJECT environment variable set, not archiving to BigQuery")
-	} else {
+	if shouldArchive {
 		log.Printf("Archiving to BigQuery at %s", projectId)
 		archivePeriodically("fallback", 10*time.Minute)
 		archivePeriodically("country", 1*time.Hour)
 		archivePeriodically("user", 24*time.Hour)
+	} else {
+		log.Printf("%s was not \"true\", not archiving to BigQuery", ARCHIVE_TO_BIGQUERY)
 	}
 }
 
