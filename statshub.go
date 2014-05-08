@@ -54,7 +54,7 @@ import (
 )
 
 func main() {
-	archive.Start()
+	archive.StartArchiving()
 
 	port := os.Getenv("PORT")
 	log.Printf("About to listen at port: %s", port)

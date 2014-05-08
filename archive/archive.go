@@ -15,36 +15,36 @@
 package archive
 
 import (
-	"github.com/getlantern/statshub/statshub"
 	"log"
 	"os"
+	"strings"
 	"time"
+
+	"github.com/getlantern/statshub/bigquery"
+	"github.com/getlantern/statshub/statshub"
 )
 
 const (
-	GOOGLE_PROJECT = "GOOGLE_PROJECT"
-
-	datasetId = "statshub"
+	ARCHIVE_TO_BIGQUERY = "ARCHIVE_TO_BIGQUERY"
 )
 
 var (
-	projectId = os.Getenv(GOOGLE_PROJECT)
+	shouldArchive = strings.ToLower(os.Getenv(ARCHIVE_TO_BIGQUERY)) == "true"
 
-	frequentlyArchivedDimensions = []string{"country", "user", "fallback"}
-
+	frequentlyArchivedDimensions   = []string{"country", "user", "fallback"}
 	infrequentlyArchivedDimensions = []string{"user"}
 )
 
-// Start starts a goroutine that continuously archives data at regular intervals
+// StartArchiving starts a goroutine that continuously archives data at regular intervals
 // based on the archiveInterval constant.
-func Start() {
-	if projectId == "" {
-		log.Println("No GOOGLE_PROJECT environment variable set, not archiving to BigQuery")
-	} else {
-		log.Printf("Archiving to BigQuery at %s", projectId)
+func StartArchiving() {
+	if shouldArchive {
+		log.Printf("Archiving to BigQuery at %s", bigquery.ProjectId)
 		archivePeriodically("fallback", 10*time.Minute)
 		archivePeriodically("country", 1*time.Hour)
 		archivePeriodically("user", 24*time.Hour)
+	} else {
+		log.Printf("%s was not \"true\", not archiving to BigQuery", ARCHIVE_TO_BIGQUERY)
 	}
 }
 
@@ -66,7 +66,7 @@ func archiveToBigQuery(dim string, interval time.Duration) error {
 		return err
 	} else {
 		for dimName, dimStats := range statsByDim {
-			if statsTable, err := NewStatsTable(projectId, datasetId, dimName); err != nil {
+			if statsTable, err := NewStatsTable(bigquery.ProjectId, bigquery.DATASET_ID, dimName); err != nil {
 				return err
 			} else {
 				return statsTable.WriteStats(dimStats, time.Now().Truncate(interval))
