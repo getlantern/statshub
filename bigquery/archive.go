@@ -12,7 +12,7 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-package archive
+package bigquery
 
 import (
 	"github.com/getlantern/statshub/statshub"
@@ -39,9 +39,9 @@ var (
 	infrequentlyArchivedDimensions = []string{"user"}
 )
 
-// Start starts a goroutine that continuously archives data at regular intervals
+// StartArchiving starts a goroutine that continuously archives data at regular intervals
 // based on the archiveInterval constant.
-func Start() {
+func StartArchiving() {
 	if shouldArchive {
 		log.Printf("Archiving to BigQuery at %s", projectId)
 		archivePeriodically("fallback", 10*time.Minute)

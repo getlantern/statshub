@@ -1,4 +1,4 @@
-package archive
+package bigquery
 
 import (
 	"github.com/getlantern/statshub/statshub"
