@@ -12,7 +12,7 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-package bigquery
+package archive
 
 import (
 	"log"
@@ -20,30 +20,18 @@ import (
 	"strings"
 	"time"
 
-	// Note - I'm using a patched version of the google-api-go-client library
-	// because of this bug -
-	// https://code.google.com/p/google-api-go-client/issues/detail?id=52
-	bigquery "code.google.com/p/ox-google-api-go-client/bigquery/v2"
-
+	"github.com/getlantern/statshub/bigquery"
 	"github.com/getlantern/statshub/statshub"
-	"github.com/oxtoacart/oauther/oauth"
 )
 
 const (
 	ARCHIVE_TO_BIGQUERY = "ARCHIVE_TO_BIGQUERY"
-	GOOGLE_PROJECT      = "GOOGLE_PROJECT"
-	OAUTH_CONFIG        = "OAUTH_CONFIG"
-
-	datasetId = "statshub"
 )
 
 var (
 	shouldArchive = strings.ToLower(os.Getenv(ARCHIVE_TO_BIGQUERY)) == "true"
 
-	projectId = os.Getenv(GOOGLE_PROJECT)
-
-	frequentlyArchivedDimensions = []string{"country", "user", "fallback"}
-
+	frequentlyArchivedDimensions   = []string{"country", "user", "fallback"}
 	infrequentlyArchivedDimensions = []string{"user"}
 )
 
@@ -51,7 +39,7 @@ var (
 // based on the archiveInterval constant.
 func StartArchiving() {
 	if shouldArchive {
-		log.Printf("Archiving to BigQuery at %s", projectId)
+		log.Printf("Archiving to BigQuery at %s", bigquery.ProjectId)
 		archivePeriodically("fallback", 10*time.Minute)
 		archivePeriodically("country", 1*time.Hour)
 		archivePeriodically("user", 24*time.Hour)
@@ -78,7 +66,7 @@ func archiveToBigQuery(dim string, interval time.Duration) error {
 		return err
 	} else {
 		for dimName, dimStats := range statsByDim {
-			if statsTable, err := NewStatsTable(projectId, datasetId, dimName); err != nil {
+			if statsTable, err := NewStatsTable(bigquery.ProjectId, bigquery.DATASET_ID, dimName); err != nil {
 				return err
 			} else {
 				return statsTable.WriteStats(dimStats, time.Now().Truncate(interval))
@@ -86,14 +74,4 @@ func archiveToBigQuery(dim string, interval time.Duration) error {
 		}
 		return nil
 	}
-}
-
-func connect() (service *bigquery.Service, err error) {
-	var oauther *oauth.OAuther
-	oauther, err = oauth.FromJSON([]byte(os.Getenv(OAUTH_CONFIG)))
-	if err != nil {
-		return
-	}
-	service, err = bigquery.New(oauther.Transport().Client())
-	return
 }

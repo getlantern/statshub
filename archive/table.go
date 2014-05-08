@@ -12,7 +12,7 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-package bigquery
+package archive
 
 import (
 	"fmt"
@@ -20,11 +20,9 @@ import (
 	"sort"
 	"time"
 
-	// Note - I'm using a patched version of the google-api-go-client library
-	// because of this bug -
-	// https://code.google.com/p/google-api-go-client/issues/detail?id=52
 	bigquery "code.google.com/p/ox-google-api-go-client/bigquery/v2"
 
+	shbq "github.com/getlantern/statshub/bigquery"
 	"github.com/getlantern/statshub/statshub"
 )
 
@@ -61,7 +59,7 @@ func NewStatsTable(projectId string, datasetId string, tableId string) (statsTab
 			},
 		},
 	}
-	if statsTable.service, err = connect(); err != nil {
+	if statsTable.service, err = shbq.Connect(); err != nil {
 		return
 	} else {
 		statsTable.tables = bigquery.NewTablesService(statsTable.service)

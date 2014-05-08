@@ -46,7 +46,7 @@
 package main
 
 import (
-	"github.com/getlantern/statshub/bigquery"
+	"github.com/getlantern/statshub/archive"
 	_ "github.com/getlantern/statshub/statshub"
 	"log"
 	"net/http"
@@ -54,7 +54,7 @@ import (
 )
 
 func main() {
-	bigquery.StartArchiving()
+	archive.StartArchiving()
 
 	port := os.Getenv("PORT")
 	log.Printf("About to listen at port: %s", port)
