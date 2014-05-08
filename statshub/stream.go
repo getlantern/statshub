@@ -19,16 +19,17 @@ import (
 	"code.google.com/p/go.net/websocket"
 	"encoding/json"
 	"fmt"
-	"github.com/oxtoacart/go-ringbuffer/ringbuff"
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
 
 const (
-	streamingInterval = 30 * time.Second
+	ANY                = "*"
+	STREAMING_INTERVAL = 30 * time.Second
 )
 
 var (
@@ -36,26 +37,32 @@ var (
 	streamingClients      = make(map[int]*streamingClient)
 	newStreamingClient    = make(chan *streamingClient)
 	closedStreamingClient = make(chan int)
-	updatesCacheSize      = 1 * 24 * 2 // 1 day worth of updates at 30 minute intervals
-	oldUpdates            = ringbuff.New(updatesCacheSize)
 )
 
 type streamingClient struct {
-	ws      *websocket.Conn
-	updates chan *streamingUpdate
-	id      chan int
+	ws       *websocket.Conn
+	updates  chan *streamingUpdate
+	id       chan int
+	dimName  string // the name of the dimension that this client is querying (e.g. "fallback")
+	dimKey   string // the key of the dimension that this client is querying (e.g. "instance_fp-afisk-at-getlantern-dot-org-50e8-4-2014-2-24" or "total")
+	statType string // the type of stat being queried (e.g. "counter" or "gauge")
+	statName string // the name of the stat being queried (e.g. "bytesGiven")
 }
 
 type streamingUpdate struct {
-	asOf    time.Time
-	allDims map[string]*json.RawMessage // using pointer because of this bug - https://code.google.com/p/go/issues/detail?id=6528
+	asOf time.Time
+	dims map[string]map[string]*Stats
 }
 
 // ClientQueryResponse is a Response to a StatsQuery
 type StreamingQueryResponse struct {
 	Response
-	AsOfSeconds int64                       `json:"asOfSeconds"`
-	Dims        map[string]*json.RawMessage `json:"dims"`
+	Intervals []StreamingQueryResponseInterval `json:"intervals"`
+}
+
+type StreamingQueryResponseInterval struct {
+	AsOfSeconds int64            `json:"asOfSeconds"`
+	Values      map[string]int64 `json:"values"`
 }
 
 func init() {
@@ -66,7 +73,7 @@ func init() {
 // handleStreamingClients handles streaming updates to subscribed streaming clients
 func handleStreamingClients() {
 	for {
-		nextInterval := time.Now().Truncate(streamingInterval).Add(streamingInterval)
+		nextInterval := time.Now().Truncate(STREAMING_INTERVAL).Add(STREAMING_INTERVAL)
 		waitTime := nextInterval.Sub(time.Now())
 		select {
 		case client := <-newStreamingClient:
@@ -74,43 +81,20 @@ func handleStreamingClients() {
 			nextStreamingClientId++
 			streamingClients[nextStreamingClientId] = client
 			client.id <- nextStreamingClientId
-
-			// Send buffered updates to client
-			oldUpdates.ForEach(func(item interface{}) {
-				update := item.(*streamingUpdate)
-				client.updates <- update
-			})
 		case closedId := <-closedStreamingClient:
 			// Remove disconnected client from map
 			delete(streamingClients, closedId)
 		case <-time.After(waitTime):
 			// Query fallback and country dims
+			// TODO: only query for the stuff that clients have asked for
 			dims, err := QueryDims([]string{"fallback", "country"})
 			if err != nil {
 				log.Printf("Unable to query dims: %s", err)
 			} else {
-				// Encode dims as JSON
-				jsonDims := make(map[string]*json.RawMessage)
-				for name, dim := range dims {
-					encoded, err := json.Marshal(dim)
-					if err != nil {
-						log.Printf("Unable to json encode dim %s: %s", name, err)
-					} else {
-						raw := json.RawMessage(encoded)
-						jsonDims[name] = &raw
-					}
-				}
-
 				// Publish update to clients
-				update := &streamingUpdate{asOf: nextInterval, allDims: jsonDims}
+				update := &streamingUpdate{asOf: nextInterval, dims: dims}
 				for _, client := range streamingClients {
 					client.updates <- update
-				}
-
-				// Remember updates at 30 minute intervals
-				if update.asOf.Truncate(30*time.Minute) == update.asOf {
-					log.Printf("Snapshotting streaming stats at %s", update.asOf)
-					oldUpdates.Add(update)
 				}
 			}
 		}
@@ -119,18 +103,25 @@ func handleStreamingClients() {
 
 // streamStats streams stats over a websocket
 func streamStats(ws *websocket.Conn) {
-	dim, err := extractid(ws.Request())
-	if err != nil {
-		data, err := json.Marshal(&Response{Succeeded: false, Error: fmt.Sprintf("Unable to extract id from request: %s", err)})
+	singleSlashPath := strings.Replace(ws.Request().URL.Path, "//", "/", -1)
+	pathParts := strings.Split(singleSlashPath, "/")
+
+	if len(pathParts) < 6 {
+		data, err := json.Marshal(&Response{Succeeded: false, Error: fmt.Sprintf("Wrong path: %s. Expected something like: %s", singleSlashPath, "/stream/country/*/counter/bytesGiven")})
 		if err == nil {
 			ws.Write(data)
 		}
 		return
 	}
-
-	dimNames := dimNamesFor(dim)
-
-	client := &streamingClient{ws: ws, updates: make(chan *streamingUpdate, updatesCacheSize*2), id: make(chan int)}
+	client := &streamingClient{
+		ws:       ws,
+		updates:  make(chan *streamingUpdate, 100),
+		id:       make(chan int),
+		dimName:  pathParts[2],
+		dimKey:   pathParts[3],
+		statType: pathParts[4],
+		statName: pathParts[5],
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -140,15 +131,30 @@ func streamStats(ws *websocket.Conn) {
 		for {
 			// This gets data for all dims
 			update := <-client.updates
-			dims := update.allDims
-			if dimNames != nil {
-				// Grab only the dimensions that this client is interested in
-				dims = make(map[string]*json.RawMessage)
-				for _, name := range dimNames {
-					dims[name] = update.allDims[name]
+			values := make(map[string]int64)
+			dim := update.dims[client.dimName]
+			queryingSpecificDimKey := client.dimKey != ANY
+			if dim != nil {
+				for dimKey, stats := range dim {
+					if !queryingSpecificDimKey || dimKey == client.dimKey {
+						switch client.statType {
+						case "counter":
+							values[dimKey] = stats.Counters[client.statName]
+						case "gauge":
+							values[dimKey] = stats.Gauges[client.statName]
+						default:
+							log.Printf("Client has unknown statType: %s", client.statType)
+						}
+					}
 				}
 			}
-			resp := &StreamingQueryResponse{Response: Response{Succeeded: true}, AsOfSeconds: update.asOf.Unix(), Dims: dims}
+			resp := &StreamingQueryResponse{
+				Response: Response{Succeeded: true},
+				Intervals: []StreamingQueryResponseInterval{
+					StreamingQueryResponseInterval{update.asOf.Unix(), values},
+				},
+			}
+
 			encoded, err := json.Marshal(resp)
 			if err != nil {
 				log.Printf("Unable to marshal json: %s", err)
