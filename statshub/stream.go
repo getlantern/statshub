@@ -51,12 +51,14 @@ ORDER BY period`
 
 	DIM_WHERE_TEMPL = "AND _dim = '%s'"
 
-	ONE_MINUTE = 60
-	ONE_HOUR   = 60 * ONE_MINUTE
-	ONE_DAY    = 24 * ONE_HOUR
-	ONE_WEEK   = 7 * ONE_DAY
-	ONE_MONTH  = 30 * ONE_DAY  // Approximation
-	ONE_YEAR   = 365 * ONE_DAY // Approximation
+	ONE_MINUTE     = 60
+	ONE_HOUR       = 60 * ONE_MINUTE
+	ONE_DAY        = 24 * ONE_HOUR
+	ONE_WEEK_DAYS  = 7
+	ONE_WEEK       = ONE_WEEK_DAYS * ONE_DAY
+	ONE_MONTH_DAYS = 30 // Approximation
+	ONE_MONTH      = ONE_MONTH_DAYS * ONE_DAY
+	ONE_YEAR_DAYS  = 365
 )
 
 var (
@@ -183,11 +185,11 @@ func streamStats(ws *websocket.Conn) {
 func (client *streamingClient) loadHistory() {
 	intervals := []StreamingQueryResponseInterval{}
 	// Monthly figures for  1 month back to 1 year back
-	intervals = client.loadHistoryForRange(intervals, ONE_MONTH, ONE_MONTH, ONE_YEAR)
+	intervals = client.loadHistoryForRange(intervals, ONE_MONTH, ONE_MONTH, ONE_YEAR_DAYS)
 	// Weekly figures for 1 week back to 1 month back
-	intervals = client.loadHistoryForRange(intervals, ONE_WEEK, ONE_WEEK, ONE_MONTH)
+	intervals = client.loadHistoryForRange(intervals, ONE_WEEK, ONE_WEEK, ONE_MONTH_DAYS)
 	// Daily figures for 1 day back to 1 week back
-	intervals = client.loadHistoryForRange(intervals, ONE_DAY, ONE_DAY, ONE_WEEK)
+	intervals = client.loadHistoryForRange(intervals, ONE_DAY, ONE_DAY, ONE_WEEK_DAYS)
 	// Hourly figures for the last 1 day
 	intervals = client.loadHistoryForRange(intervals, ONE_HOUR, 0, ONE_DAY)
 
