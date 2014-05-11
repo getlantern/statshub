@@ -273,7 +273,11 @@ func rowFromStats(dim string, stats *statshub.Stats, now time.Time) (row map[str
 
 func statsAsMap(stats *statshub.Stats) (m map[string]interface{}) {
 	m = make(map[string]interface{})
-	m[counter] = stats.Counters
-	m[gauge] = stats.Gauges
+	if len(stats.Counters) > 0 {
+		m[counter] = stats.Counters
+	}
+	if len(stats.Gauges) > 0 {
+		m[gauge] = stats.Gauges
+	}
 	return
 }
