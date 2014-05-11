@@ -17,6 +17,7 @@ package archive
 import (
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,12 +26,10 @@ import (
 )
 
 const (
-	ARCHIVE_TO_BIGQUERY = "ARCHIVE_TO_BIGQUERY"
+	ARCHIVED_DIMS = "ARCHIVED_DIMS"
 )
 
 var (
-	shouldArchive = strings.ToLower(os.Getenv(ARCHIVE_TO_BIGQUERY)) == "true"
-
 	frequentlyArchivedDimensions   = []string{"country", "user", "fallback"}
 	infrequentlyArchivedDimensions = []string{"user"}
 )
@@ -38,13 +37,24 @@ var (
 // StartArchiving starts a goroutine that continuously archives data at regular intervals
 // based on the archiveInterval constant.
 func StartArchiving() {
+	ads := os.Getenv(ARCHIVED_DIMS)
+	shouldArchive := ads != ""
 	if shouldArchive {
 		log.Printf("Archiving to BigQuery at %s", bigquery.ProjectId)
-		archivePeriodically("fallback", 10*time.Minute)
-		archivePeriodically("country", 1*time.Hour)
-		archivePeriodically("user", 24*time.Hour)
+		archivedDims := strings.Split(ads, " ")
+		for _, dimSpec := range archivedDims {
+			pieces := strings.Split(dimSpec, ",")
+			dim := pieces[0]
+			minutes, err := strconv.Atoi(pieces[1])
+			if err != nil {
+				log.Printf("Unable to archive dim %s, invalid # of minutes %s: %s", dim, pieces[1], err)
+			} else {
+				log.Printf("Archiving dim %s every %d minutes", dim, minutes)
+				archivePeriodically(dim, time.Duration(minutes)*time.Minute)
+			}
+		}
 	} else {
-		log.Printf("%s was not \"true\", not archiving to BigQuery", ARCHIVE_TO_BIGQUERY)
+		log.Printf("Not archiving to BigQuery")
 	}
 }
 
