@@ -130,9 +130,7 @@ func (statsTable *StatsTable) insertRows(dimStats map[string]*statshub.Stats, no
 			log.Printf("Unable to insert into %s: %s", tableId, err)
 		} else if len(resp.InsertErrors) > 0 {
 			for _, ie := range resp.InsertErrors {
-				for _, e := range ie.Errors {
-					log.Printf("Insert error inserting into %s: %s, %s, %s, %s", tableId, e.Location, e.Message, e.DebugInfo, e.Reason)
-				}
+				log.Printf("Insert error inserting into %s: %s", tableId, ie.Errors)
 			}
 		} else {
 			log.Printf("Inserted %d rows into: %s", len(rows), tableId)
@@ -150,7 +148,6 @@ func (statsTable *StatsTable) insertRows(dimStats map[string]*statshub.Stats, no
 			InsertId: fmt.Sprintf("%s|%d", dim, now.Unix()),
 			Json:     rowFromStats(dim, stats, now),
 		}
-		log.Println(rows[i].Json)
 		i++
 		if i == ROWS_PER_INSERT {
 			// To deal with rate limiting, insert every 1000 rows
