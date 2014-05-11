@@ -34,7 +34,6 @@ import (
 )
 
 const (
-	STREAM_DIMS        = os.Getevn("STREAM_DIMS")
 	ANY                = "*"
 	STREAMING_INTERVAL = 30 * time.Second
 
@@ -65,6 +64,8 @@ ORDER BY period`
 )
 
 var (
+	STREAM_DIMS = os.Getenv("STREAM_DIMS")
+
 	nextStreamingClientId = 0
 	streamingClients      = make(map[int]*streamingClient)
 	newStreamingClient    = make(chan *streamingClient)
