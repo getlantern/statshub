@@ -130,8 +130,9 @@ func (statsTable *StatsTable) insertRows(dimStats map[string]*statshub.Stats, no
 			log.Printf("Unable to insert into %s: %s", tableId, err)
 		} else if len(resp.InsertErrors) > 0 {
 			for _, ie := range resp.InsertErrors {
-				log.Printf("Insert error inserting into %s: %s", tableId, ie.Errors)
-
+				for _, e := range ie.Errors {
+					log.Printf("Insert error inserting into %s: %s, %s, %s, %s", tableId, e.Location, e.Message, e.DebugInfo, e.Reason)
+				}
 			}
 		} else {
 			log.Printf("Inserted %d rows into: %s", len(rows), tableId)
