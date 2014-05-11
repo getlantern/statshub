@@ -121,6 +121,7 @@ func (statsTable *StatsTable) insertRows(dimStats map[string]*statshub.Stats, no
 	tableId := statsTable.table.TableReference.TableId
 	doInsert := func(rows []*bigquery.TableDataInsertAllRequestRows) error {
 		insertRequest := &bigquery.TableDataInsertAllRequest{Rows: rows}
+		log.Println(insertRequest)
 		resp, err := statsTable.tabledata.InsertAll(
 			statsTable.table.TableReference.ProjectId,
 			statsTable.table.TableReference.DatasetId,
@@ -133,8 +134,7 @@ func (statsTable *StatsTable) insertRows(dimStats map[string]*statshub.Stats, no
 				log.Printf("Insert error inserting into %s: %s", tableId, ie.Errors)
 
 			}
-		}
-		if err == nil {
+		} else {
 			log.Printf("Inserted %d rows into: %s", len(rows), tableId)
 		}
 		return nil
