@@ -121,7 +121,6 @@ func (statsTable *StatsTable) insertRows(dimStats map[string]*statshub.Stats, no
 	tableId := statsTable.table.TableReference.TableId
 	doInsert := func(rows []*bigquery.TableDataInsertAllRequestRows) error {
 		insertRequest := &bigquery.TableDataInsertAllRequest{Rows: rows}
-		log.Println(insertRequest)
 		resp, err := statsTable.tabledata.InsertAll(
 			statsTable.table.TableReference.ProjectId,
 			statsTable.table.TableReference.DatasetId,
@@ -150,6 +149,7 @@ func (statsTable *StatsTable) insertRows(dimStats map[string]*statshub.Stats, no
 			InsertId: fmt.Sprintf("%s|%d", dim, now.Unix()),
 			Json:     rowFromStats(dim, stats, now),
 		}
+		log.Println(rows[i].Json)
 		i++
 		if i == ROWS_PER_INSERT {
 			// To deal with rate limiting, insert every 1000 rows
