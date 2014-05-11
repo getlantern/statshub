@@ -22,6 +22,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,6 +34,7 @@ import (
 )
 
 const (
+	STREAM_DIMS        = os.Getevn("STREAM_DIMS")
 	ANY                = "*"
 	STREAMING_INTERVAL = 30 * time.Second
 
@@ -117,7 +119,12 @@ func handleStreamingClients() {
 		case <-time.After(waitTime):
 			// Query fallback and country dims
 			// TODO: only query for the stuff that clients have asked for
-			dims, err := QueryDims([]string{"fallback", "country"})
+			streamDims := strings.Split(STREAM_DIMS, " ")
+			if len(streamDims) == 0 {
+				// Default streamDims
+				streamDims = []string{"fallback", "country"}
+			}
+			dims, err := QueryDims(streamDims)
 			if err != nil {
 				log.Printf("Unable to query dims: %s", err)
 			} else {

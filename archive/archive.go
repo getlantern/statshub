@@ -47,9 +47,9 @@ func StartArchiving() {
 			dim := pieces[0]
 			minutes, err := strconv.Atoi(pieces[1])
 			if err != nil {
-				log.Printf("Unable to archive dim %s, invalid # of minutes %s: %s", dim, pieces[1], err)
+				log.Printf("Unable to archive dim '%s', invalid # of minutes '%s': %s", dim, pieces[1], err)
 			} else {
-				log.Printf("Archiving dim %s every %d minutes", dim, minutes)
+				log.Printf("Archiving dim '%s' every %d minutes", dim, minutes)
 				archivePeriodically(dim, time.Duration(minutes)*time.Minute)
 			}
 		}
