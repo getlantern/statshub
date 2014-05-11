@@ -37,6 +37,7 @@ var (
 // StartArchiving starts a goroutine that continuously archives data at regular intervals
 // based on the archiveInterval constant.
 func StartArchiving() {
+	// Expects something like "country,10 fallback,10"
 	ads := os.Getenv(ARCHIVED_DIMS)
 	shouldArchive := ads != ""
 	if shouldArchive {

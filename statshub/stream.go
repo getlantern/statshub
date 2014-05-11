@@ -118,7 +118,7 @@ func handleStreamingClients() {
 			// Remove disconnected client from map
 			delete(streamingClients, closedId)
 		case <-time.After(waitTime):
-			// Query fallback and country dims
+			// Query configured dims
 			// TODO: only query for the stuff that clients have asked for
 			streamDims := strings.Split(STREAM_DIMS, " ")
 			if len(streamDims) == 0 {

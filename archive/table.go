@@ -118,15 +118,24 @@ func (statsTable *StatsTable) mergeSchema(schema *bigquery.TableSchema) {
 }
 
 func (statsTable *StatsTable) insertRows(dimStats map[string]*statshub.Stats, now time.Time) error {
+	tableId := statsTable.table.TableReference.TableId
 	doInsert := func(rows []*bigquery.TableDataInsertAllRequestRows) error {
 		insertRequest := &bigquery.TableDataInsertAllRequest{Rows: rows}
-		_, err := statsTable.tabledata.InsertAll(
+		resp, err := statsTable.tabledata.InsertAll(
 			statsTable.table.TableReference.ProjectId,
 			statsTable.table.TableReference.DatasetId,
-			statsTable.table.TableReference.TableId,
+			tableId,
 			insertRequest).Do()
+		if err != nil {
+			log.Printf("Unable to insert into %s: %s", tableId, err)
+		} else if len(resp.InsertErrors > 0) {
+			for _, ie := range resp.InsertErrors {
+				log.Printf("Insert error inserting into %s: %s", tableId, ie.Errors)
+
+			}
+		}
 		if err == nil {
-			log.Printf("Inserted %d rows into: %s", len(rows), statsTable.table.TableReference.TableId)
+			log.Printf("Inserted %d rows into: %s", len(rows), tableId)
 		}
 		return nil
 	}
