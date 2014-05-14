@@ -51,9 +51,14 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime"
 )
 
 func main() {
+	numcores := runtime.NumCPU()
+	log.Printf("Using all %d cores on machine", numcores)
+	runtime.GOMAXPROCS(numcores)
+
 	archive.StartArchiving()
 
 	port := os.Getenv("PORT")
