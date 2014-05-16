@@ -16,8 +16,8 @@
 package statshub
 
 import (
+	"fmt"
 	"github.com/garyburd/redigo/redis"
-	"log"
 	"os"
 	"time"
 )
@@ -45,12 +45,13 @@ func init() {
 				redisConnectTimeout,
 				redisReadTimeout,
 				redisWriteTimeout)
+
 			if err != nil {
-				log.Fatalf("Unable to dial redis: %s", err)
+				return nil, fmt.Errorf("Unable to dial redis: %s", err)
 			}
 			if _, err := c.Do("AUTH", os.Getenv("REDIS_PASS")); err != nil {
 				c.Close()
-				log.Fatalf("Unable to authenticate to redis: %s", err)
+				return nil, fmt.Errorf("Unable to authenticate to redis: %s", err)
 			}
 			return c, err
 		},
