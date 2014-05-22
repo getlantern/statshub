@@ -242,7 +242,18 @@ func (client *streamingClient) loadHistoryForRange(
 				// Start a new interval
 				asOf := cutoff * int64(intervalInSeconds)
 				interval = StreamingQueryResponseInterval{asOf, make(map[string]int64)}
-				intervals = append(intervals, interval)
+				l := len(intervals)
+				if l > 0 && intervals[l-1].AsOfSeconds == asOf {
+					// When switching from one periodicity to another (e.g. week
+					// to day), it's possible that we see an interval that's
+					// already been seen.  If that happens, we replace the
+					// existing one with the new one (which is assumed to be
+					// more precise).
+					intervals[l-1] = interval
+				} else {
+					// Totally new interval, just append
+					intervals = append(intervals, interval)
+				}
 			}
 			lastCutoff = cutoff
 
