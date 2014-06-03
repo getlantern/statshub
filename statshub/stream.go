@@ -185,14 +185,12 @@ func streamStats(ws *websocket.Conn) {
 // to the client
 func (client *streamingClient) loadHistory() {
 	intervals := []StreamingQueryResponseInterval{}
-	// Monthly figures for  1 month back to 1 year back
-	intervals = client.loadHistoryForRange(intervals, ONE_MONTH_SECS, ONE_MONTH_DAYS, ONE_YEAR_DAYS)
-	// Weekly figures for 1 week back to 1 month back
-	intervals = client.loadHistoryForRange(intervals, ONE_WEEK_SECS, ONE_WEEK_DAYS, ONE_MONTH_DAYS)
-	// Daily figures for 1 day back to 1 week back
-	intervals = client.loadHistoryForRange(intervals, ONE_DAY_SECS, ONE_DAY_DAYS, ONE_WEEK_DAYS)
-	// Hourly figures for the last 1 day
-	intervals = client.loadHistoryForRange(intervals, ONE_HOUR_SECS, 0, ONE_DAY_DAYS)
+	// Weekly figures for 1 month back to 1 year back
+	intervals = client.loadHistoryForRange(intervals, ONE_WEEK_SECS, ONE_MONTH_DAYS, ONE_YEAR_DAYS)
+	// Daily figures for 1 week back to 1 month back
+	intervals = client.loadHistoryForRange(intervals, ONE_DAY_SECS, ONE_WEEK_DAYS, ONE_MONTH_DAYS)
+	// Hourly figures for the last 1 week
+	intervals = client.loadHistoryForRange(intervals, ONE_HOUR_SECS, 0, ONE_WEEK_DAYS)
 
 	resp := &StreamingQueryResponse{
 		Response:  Response{Succeeded: true},
