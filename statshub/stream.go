@@ -222,6 +222,7 @@ func (client *streamingClient) loadHistoryForRange(
 		startOffsetInDays,
 		endOffsetInDays,
 		additionalWhereClause)
+	log.Printf("Querying BigQuery: %s", queryString)
 	rows, err := bigquery.Query(queryString, math.MaxInt32)
 	if err != nil {
 		log.Printf("Unable to run query: %s\n%s\n\n", err, queryString)
