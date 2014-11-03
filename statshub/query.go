@@ -55,7 +55,7 @@ func QueryDims(dimNames []string) (statsByDim map[string]map[string]*Stats, err 
 		dimStats := make(map[string]*Stats)
 		var dimKeys []string
 		if dimKeys, err = listDimKeys(conn, dimName); err != nil {
-			return nil, fmt.Errorf("Unable to list keys for dimension: %s", dimName)
+			return nil, fmt.Errorf("Unable to list keys for dimension %s: %s", dimName, err)
 		}
 		for _, dimKey := range dimKeys {
 			dimStats[dimKey] = newStats()
