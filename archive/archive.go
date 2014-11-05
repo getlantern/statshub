@@ -41,6 +41,9 @@ func StartArchiving() {
 		archivePeriodically("country", 1*time.Hour)
 		//archivePeriodically("host", 1*time.Hour)
 		archivePeriodically("user", 24*time.Hour)
+		archivePeriodically("answererCountry", 1*time.Hour)
+		archivePeriodically("offererAnswererCountries", 1*time.Hour)
+		archivePeriodically("operatingSystem", 1*time.Hour)
 	} else {
 		log.Printf("%s was not \"true\", not archiving to BigQuery", ARCHIVE_TO_BIGQUERY)
 	}
