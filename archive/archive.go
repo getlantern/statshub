@@ -63,6 +63,7 @@ func archivePeriodically(dim string, interval time.Duration) {
 }
 
 func archiveToBigQuery(dim string, interval time.Duration) error {
+	log.Printf("Archiving dim %s to BigQuery", dim)
 	if statsByDim, err := statshub.QueryDims([]string{dim}); err != nil {
 		return err
 	} else {
