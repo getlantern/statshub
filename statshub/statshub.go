@@ -21,7 +21,6 @@ import (
 	"log"
 	"net/http"
 	"path"
-	"strings"
 	"time"
 )
 
@@ -54,11 +53,7 @@ func init() {
 
 // statsHandler handles requests to /stats
 func statsHandler(w http.ResponseWriter, r *http.Request) {
-	var id string
-	var err error
-	if id, err = path.Base(r.URL.Path); err != nil {
-		fail(w, 400, err)
-	}
+	id := path.Base(r.URL.Path)
 
 	if "POST" == r.Method {
 		if id == "" {
