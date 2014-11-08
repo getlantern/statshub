@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 )
@@ -55,7 +56,7 @@ func init() {
 func statsHandler(w http.ResponseWriter, r *http.Request) {
 	var id string
 	var err error
-	if id, err = extractid(r); err != nil {
+	if id, err = path.Base(r.URL.Path); err != nil {
 		fail(w, 400, err)
 	}
 
@@ -178,18 +179,6 @@ func getStats(dim string) (statusCode int, resp interface{}, err error) {
 	}
 
 	return 200, clientResp, nil
-}
-
-// extractid extracts the id from the request url
-func extractid(r *http.Request) (id string, err error) {
-	// Figure out the id
-	lastSlash := strings.LastIndex(r.URL.Path, "/")
-	if lastSlash == 0 {
-		id = ""
-	} else {
-		id = r.URL.Path[lastSlash+1:]
-	}
-	return
 }
 
 func dimNamesFor(dim string) []string {
