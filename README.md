@@ -251,3 +251,18 @@ To deploy:
 git commit -a -m"..." && git push
 git push heroku master
 ```
+
+### Deleting Keys
+
+Sometimes, it is necessary to delete keys from the database (e.g. to clean out
+corrupted/test data). This can be done using a LUA script.
+
+For example, let's say that we need to delete all keys containing
+"traversalSucceeded". Running this command inside redis-cli will do that:
+
+```
+EVAL "return redis.call('del', unpack(redis.call('keys', ARGV[1])))" 0 "*traversalSucceeded*"
+```
+
+See [StackOverflow](http://stackoverflow.com/questions/4006324/how-to-atomically-delete-keys-matching-a-pattern-using-redis)
+for more details.
