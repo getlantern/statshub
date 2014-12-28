@@ -38,6 +38,7 @@ func StartArchiving() {
 	if shouldArchive {
 		log.Printf("Archiving to BigQuery at %s", bigquery.ProjectId)
 		archivePeriodically("fallback", 10*time.Minute)
+		archivePeriodically("flserver", 1*time.Hour)
 		archivePeriodically("country", 1*time.Hour)
 		//archivePeriodically("host", 1*time.Hour)
 		archivePeriodically("user", 24*time.Hour)
