@@ -42,6 +42,7 @@ func StartArchiving() {
 		archivePeriodically("country", 1*time.Hour)
 		//archivePeriodically("host", 1*time.Hour)
 		archivePeriodically("user", 24*time.Hour)
+		archivePeriodically("destport", 1*time.Hour)
 		archivePeriodically("answerercountry", 1*time.Hour)
 		archivePeriodically("offereranswerercountries", 1*time.Hour)
 		archivePeriodically("operatingsystem", 1*time.Hour)
