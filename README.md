@@ -39,6 +39,9 @@ Gauges - directly sets the value of a gauge.
 Members - tracks the value's membership in a set of unique values.  The
 corresponding gauge value is calculated as the count of unique members.
 
+MultiMembers - like Members, but allows submitting multiple members at once
+instead of just one.
+
 ### Querying Stats
 Stats are queried at the dimension level.  A query can ask for only a single 
 dimension, or omit the dimension and receive stats for all dimensions.
@@ -82,7 +85,8 @@ curl --data-binary \
   "counters": { "counterA": 50 },
   "increments": { "counterB": 500 },
   "gauges": { "gaugeA": 5000 },
-  "members": { "gaugeB": "item1" }
+  "members": { "gaugeB": "item1" },
+  "multiMembers": { "gaugeC", ["itemI", "itemII"] }
 }' \
 "http://localhost:9000/stats/myid1"
 ```
@@ -122,7 +126,8 @@ curl "http://localhost:9000/stats/" | python -mjson.tool
                     "counterB": 500
                 },
                 "gauges": {
-                    "gaugeB": 1
+                    "gaugeB": 1,
+                    "gaugeC": 2
                 },
                 "gaugesCurrent": {
                     "gaugeA": 5000
@@ -148,7 +153,8 @@ curl "http://localhost:9000/stats/" | python -mjson.tool
                     "counterB": 500
                 },
                 "gauges": {
-                    "gaugeB": 1
+                    "gaugeB": 1,
+                    "gaugeC": 2
                 },
                 "gaugesCurrent": {
                     "gaugeA": 5000
@@ -169,7 +175,8 @@ curl --data-binary \
   "counters": { "counterA": 60 },
   "increments": { "counterB": 600 },
   "gauges": { "gaugeA": 6000 },
-  "members": { "gaugeB": "item2" }
+  "members": { "gaugeB": "item2" },
+  "multiMembers": { "gaugeC", ["itemI", "itemIII"] }
 }' \
 "http://localhost:9000/stats/myid2"
 ```
@@ -197,7 +204,8 @@ curl "http://localhost:9000/stats/country" | python -mjson.tool
                     "counterB": 1100
                 },
                 "gauges": {
-                    "gaugeB": 2
+                    "gaugeB": 2,
+                    "gaugeC": 3
                 },
                 "gaugesCurrent": {
                     "gaugeA": 6000
@@ -209,7 +217,8 @@ curl "http://localhost:9000/stats/country" | python -mjson.tool
                     "counterB": 1100
                 },
                 "gauges": {
-                    "gaugeB": 2
+                    "gaugeB": 2,
+                    "gaugeC": 3
                 },
                 "gaugesCurrent": {
                     "gaugeA": 6000
