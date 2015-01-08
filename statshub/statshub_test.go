@@ -86,6 +86,9 @@ func TestUpdateAndQuery(t *testing.T) {
 			Members: map[string]string{
 				"gaugeB": "item1",
 			},
+			MultiMembers: map[string][]string{
+				"gaugeC": []string{"itemI", "itemII"},
+			},
 		},
 	}
 
@@ -119,6 +122,7 @@ func TestUpdateAndQuery(t *testing.T) {
 	assertCounterEquals(t, statsByDim, "user:bob:counterB", 500)
 	assertGaugeEquals(t, statsByDim, "user:bob:gaugeA", 5000)
 	assertGaugeEquals(t, statsByDim, "user:bob:gaugeB", 1)
+	assertGaugeEquals(t, statsByDim, "user:bob:gaugeC", 2)
 
 	// Totals should match individual values at this point
 	assertCounterEquals(t, statsByDim, "country:total:counterA", 50)
@@ -131,6 +135,7 @@ func TestUpdateAndQuery(t *testing.T) {
 	assertCounterEquals(t, statsByDim, "user:total:counterB", 500)
 	assertGaugeEquals(t, statsByDim, "user:total:gaugeA", 5000)
 	assertGaugeEquals(t, statsByDim, "user:total:gaugeB", 1)
+	assertGaugeEquals(t, statsByDim, "user:total:gaugeC", 2)
 
 	update = &StatsUpdate{
 		Dims: map[string]string{
@@ -151,6 +156,9 @@ func TestUpdateAndQuery(t *testing.T) {
 			},
 			Members: map[string]string{
 				"gaugeB": "item2",
+			},
+			MultiMembers: map[string][]string{
+				"gaugeC": []string{"itemI", "itemIII"},
 			},
 		},
 	}
@@ -173,10 +181,12 @@ func TestUpdateAndQuery(t *testing.T) {
 	assertGaugeEquals(t, statsByDim, "country:es:gaugeAAA", 0)
 	// Adding a new unique member should be reflected in the corresonding gauge
 	assertGaugeEquals(t, statsByDim, "country:es:gaugeB", 2)
+	assertGaugeEquals(t, statsByDim, "country:es:gaugeC", 3)
 	assertCounterEquals(t, statsByDim, "user:bob:counterA", 60)
 	assertCounterEquals(t, statsByDim, "user:bob:counterB", 1100)
 	assertGaugeEquals(t, statsByDim, "user:bob:gaugeA", 0)
 	assertGaugeEquals(t, statsByDim, "user:bob:gaugeB", 2)
+	assertGaugeEquals(t, statsByDim, "user:bob:gaugeC", 3)
 
 	// Totals should still match individual values at this point
 	assertCounterEquals(t, statsByDim, "country:total:counterA", 60)
@@ -189,6 +199,7 @@ func TestUpdateAndQuery(t *testing.T) {
 	assertCounterEquals(t, statsByDim, "user:total:counterB", 1100)
 	assertGaugeEquals(t, statsByDim, "user:total:gaugeA", 0)
 	assertGaugeEquals(t, statsByDim, "user:total:gaugeB", 2)
+	assertGaugeEquals(t, statsByDim, "user:total:gaugeC", 3)
 
 	update = &StatsUpdate{
 		Dims: map[string]string{
@@ -212,7 +223,9 @@ func TestUpdateAndQuery(t *testing.T) {
 
 	// Adding a member about which we already knew should not increase the gauge's value
 	assertGaugeEquals(t, statsByDim, "country:es:gaugeB", 2)
+	assertGaugeEquals(t, statsByDim, "country:es:gaugeC", 3)
 	assertGaugeEquals(t, statsByDim, "user:bob:gaugeB", 2)
+	assertGaugeEquals(t, statsByDim, "user:bob:gaugeC", 3)
 
 	sleepTillNextBucket()
 	// Post our spanish gauges again to keep them from rolling over in the next period
@@ -252,6 +265,9 @@ func TestUpdateAndQuery(t *testing.T) {
 			Members: map[string]string{
 				"gaugeB": "item3",
 			},
+			MultiMembers: map[string][]string{
+				"gaugeC": []string{"itemIV"},
+			},
 		},
 	}
 	writeStats("myid2")
@@ -267,6 +283,7 @@ func TestUpdateAndQuery(t *testing.T) {
 	assertGaugeEquals(t, statsByDim, "country:es:gaugeA", 0)
 	assertGaugeEquals(t, statsByDim, "country:es:gaugeAA", 50000)
 	assertGaugeEquals(t, statsByDim, "country:es:gaugeB", 2)
+	assertGaugeEquals(t, statsByDim, "country:es:gaugeC", 3)
 	// The new country should now reflect its counters and gauges
 	assertCounterEquals(t, statsByDim, "country:de:counterA", 70)
 	assertCounterEquals(t, statsByDim, "country:de:counterB", 700)
@@ -274,12 +291,14 @@ func TestUpdateAndQuery(t *testing.T) {
 	assertGaugeEquals(t, statsByDim, "country:de:gaugeAA", 70000)
 	assertGaugeEquals(t, statsByDim, "country:de:gaugeAAA", 0)
 	assertGaugeEquals(t, statsByDim, "country:de:gaugeB", 1)
+	assertGaugeEquals(t, statsByDim, "country:de:gaugeC", 1)
 	// The user's counters and gauges should reflect the cumulative values from both id (myid1 and myid2)
 	// In this case that also happens to be the total across both countries
 	assertCounterEquals(t, statsByDim, "user:bob:counterA", 130)
 	assertCounterEquals(t, statsByDim, "user:bob:counterB", 1800)
 	assertGaugeEquals(t, statsByDim, "user:bob:gaugeA", 7000)
 	assertGaugeEquals(t, statsByDim, "user:bob:gaugeB", 3)
+	assertGaugeEquals(t, statsByDim, "user:bob:gaugeC", 4)
 
 	// Totals should now inclue all dimensions
 	assertCounterEquals(t, statsByDim, "country:total:counterA", 130)
@@ -294,6 +313,7 @@ func TestUpdateAndQuery(t *testing.T) {
 	assertGaugeEquals(t, statsByDim, "user:total:gaugeAA", 120000)
 	assertGaugeEquals(t, statsByDim, "user:total:gaugeAAA", 0)
 	assertGaugeEquals(t, statsByDim, "user:total:gaugeB", 3)
+	assertGaugeEquals(t, statsByDim, "user:total:gaugeC", 4)
 
 	sleepTillNextBucket()
 	statsByDim, err = QueryDims([]string{"country", "user"})
@@ -307,8 +327,10 @@ func TestUpdateAndQuery(t *testing.T) {
 	assertGaugeEquals(t, statsByDim, "country:es:gaugeB", 2)
 	assertGaugeEquals(t, statsByDim, "country:de:gaugeA", 0)
 	assertGaugeEquals(t, statsByDim, "country:de:gaugeB", 1)
+	assertGaugeEquals(t, statsByDim, "country:de:gaugeC", 1)
 	assertGaugeEquals(t, statsByDim, "user:bob:gaugeA", 0)
 	assertGaugeEquals(t, statsByDim, "user:bob:gaugeB", 3)
+	assertGaugeEquals(t, statsByDim, "user:bob:gaugeC", 4)
 }
 
 func assertCounterEquals(

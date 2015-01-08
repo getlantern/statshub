@@ -17,10 +17,11 @@ package statshub
 
 import (
 	"fmt"
-	"github.com/garyburd/redigo/redis"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/garyburd/redigo/redis"
 )
 
 // StatsUpdate posts stats with zero, one or more dimensions.  Stats
@@ -80,6 +81,9 @@ func (stats *StatsUpdate) write(id string) (err error) {
 		return
 	}
 	if err = stats.writeMembers(id); err != nil {
+		return
+	}
+	if err = stats.writeMultiMembers(id); err != nil {
 		return
 	}
 
@@ -180,6 +184,33 @@ func (stats *StatsUpdate) writeMembers(id string) (err error) {
 	})
 }
 
+// writeMultiMembers adds multiple members to redis
+func (stats *StatsUpdate) writeMultiMembers(id string) (err error) {
+	writeMulti := func(redisKey string, val interface{}) error {
+		members := val.([]string)
+		args := make([]interface{}, 0, len(members)+1)
+		args = append(args, redisKey)
+		for _, member := range members {
+			args = append(args, member)
+		}
+		// Record members in set
+		return stats.conn.Send("SADD", args...)
+	}
+
+	return stats.doWriteStrings(id, stats.MultiMembers, &statWriter{
+		statType: "member",
+		writeDetail: func(redisKey string, val interface{}) error {
+			return writeMulti(redisKey, val)
+		},
+		expireDetail: func(redisKey string) error {
+			return nil
+		},
+		writeDim: func(redisKey string, val interface{}, oldVal interface{}) error {
+			return writeMulti(redisKey, val)
+		},
+	})
+}
+
 func (stats *StatsUpdate) doWriteInt(
 	id string,
 	values map[string]int64,
@@ -211,6 +242,34 @@ func (stats *StatsUpdate) doWriteInt(
 func (stats *StatsUpdate) doWriteString(
 	id string,
 	values map[string]string,
+	writer *statWriter) (err error) {
+
+	return stats.doWrite(
+		id,
+		len(values),
+		writer,
+		func(reportVal func(key string, val interface{}) error) error {
+			// Iterate over keys in alphabetical order for consistent ordering
+			// between detail updates and corresponding rollups
+			keys := make([]string, len(values))
+			i := 0
+			for key, _ := range values {
+				keys[i] = key
+				i += 1
+			}
+			sort.Strings(keys)
+
+			for _, key := range keys {
+				val := values[key]
+				reportVal(key, val)
+			}
+			return nil
+		})
+}
+
+func (stats *StatsUpdate) doWriteStrings(
+	id string,
+	values map[string][]string,
 	writer *statWriter) (err error) {
 
 	return stats.doWrite(
